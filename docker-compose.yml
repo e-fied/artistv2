@@ -1,0 +1,36 @@
+services:
+  tourtracker:
+    build: .
+    container_name: TourTracker
+    ports:
+      - "5001:8000"
+    volumes:
+      - /mnt/user/appdata/tourtracker/data:/app/data
+    env_file:
+      - /mnt/user/appdata/tourtracker/tourtracker.env
+    depends_on:
+      crawl4ai:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "com.unraid.container.name=Tour Tracker"
+      - "com.unraid.container.icon=https://raw.githubusercontent.com/e-fied/tourtracker/main/icon.png"
+      - "com.unraid.container.description=Artist & Comedian Tour Date Tracker"
+
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    container_name: TourTracker-Crawl4AI
+    shm_size: 1g
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11235/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s

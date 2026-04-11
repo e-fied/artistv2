@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}{% if editing %}Edit Location{% else %}Add Location{% endif %} — Tour Tracker{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+  <div class="page-header">
+    <div>
+      <h2>{% if editing %}Edit Location{% else %}Add Location{% endif %}</h2>
+      <p class="subtitle">{% if editing %}Update {{ profile.name }}{% else %}Create a new location profile{% endif %}</p>
+    </div>
+    <a href="/locations" class="btn btn-secondary">← Back</a>
+  </div>
+
+  <div class="card" style="max-width: 640px;">
+    <form method="post" action="{% if editing %}/locations/{{ profile.id }}/edit{% else %}/locations/new{% endif %}">
+
+      <div class="form-group">
+        <label class="form-label" for="name">Profile Name</label>
+        <input type="text" id="name" name="name" class="form-input"
+               value="{{ profile.name if profile else '' }}"
+               placeholder="e.g. Vancouver / Lower Mainland" required>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="latitude">Latitude</label>
+          <input type="number" id="latitude" name="latitude" class="form-input font-mono"
+                 step="0.0001" value="{{ profile.latitude if profile else '49.2827' }}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="longitude">Longitude</label>
+          <input type="number" id="longitude" name="longitude" class="form-input font-mono"
+                 step="0.0001" value="{{ profile.longitude if profile else '-123.1207' }}" required>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="radius_km">Radius (km)</label>
+          <input type="number" id="radius_km" name="radius_km" class="form-input"
+                 min="1" max="500" value="{{ profile.radius_km if profile else '50' }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="country_code">Country Code</label>
+          <input type="text" id="country_code" name="country_code" class="form-input font-mono"
+                 maxlength="5" value="{{ profile.country_code if profile else 'CA' }}">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="region_code">Region Code</label>
+          <input type="text" id="region_code" name="region_code" class="form-input font-mono"
+                 maxlength="10" value="{{ profile.region_code if profile else 'BC' }}"
+                 placeholder="e.g. BC, WA">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Options</label>
+          <label class="form-check mt-sm">
+            <input type="checkbox" name="is_default" value="true"
+                   {% if profile and profile.is_default %}checked{% endif %}>
+            <span class="text-sm">Default for all artists</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="aliases">Nearby City Aliases</label>
+        <textarea id="aliases" name="aliases" class="form-textarea"
+                  placeholder="Burnaby, Surrey, Richmond, North Vancouver, ...">{% if profile and profile.aliases %}{{ profile.aliases | map(attribute='alias_city') | join(', ') }}{% endif %}</textarea>
+        <div class="form-hint">Comma-separated list of cities to include in this location profile</div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary btn-lg">
+          {% if editing %}Save Changes{% else %}Create Location{% endif %}
+        </button>
+        <a href="/locations" class="btn btn-secondary btn-lg">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Locations — Tour Tracker{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+  <div class="page-header">
+    <div>
+      <h2>Locations</h2>
+      <p class="subtitle">Manage tracked cities and regions</p>
+    </div>
+    <a href="/locations/new" class="btn btn-primary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Location
+    </a>
+  </div>
+
+  {% if profiles %}
+  <div class="card-grid">
+    {% for profile in profiles %}
+    <div class="card animate-in stagger-{{ loop.index }}">
+      <div class="card-header">
+        <h3 class="card-title flex items-center gap-sm">
+          📍 {{ profile.name }}
+          {% if profile.is_default %}
+            <span class="badge badge-success" style="font-size: 0.625rem;">DEFAULT</span>
+          {% endif %}
+        </h3>
+      </div>
+
+      <div class="text-xs text-muted font-mono mb-md">
+        {{ profile.latitude }}, {{ profile.longitude }} · {{ profile.radius_km }} km radius ·
+        {{ profile.country_code }}{% if profile.region_code %}/{{ profile.region_code }}{% endif %}
+      </div>
+
+      {% if profile.aliases %}
+      <div class="mb-md">
+        <div class="text-xs text-muted font-semibold mb-sm">Nearby cities ({{ profile.aliases|length }})</div>
+        <div class="flex gap-xs" style="flex-wrap: wrap;">
+          {% for alias in profile.aliases %}
+            <span class="badge badge-neutral">{{ alias.alias_city }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="flex gap-xs mt-sm">
+        <a href="/locations/{{ profile.id }}/edit" class="btn btn-ghost btn-sm">Edit</a>
+        <form method="post" action="/locations/{{ profile.id }}/delete"
+              onsubmit="return confirm('Delete {{ profile.name }}?')"
+              style="margin-left: auto;">
+          <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-error);">Delete</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">📍</div>
+    <p>No location profiles yet</p>
+    <a href="/locations/new" class="btn btn-primary">Add Vancouver / Lower Mainland</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

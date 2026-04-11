@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Scan History — Tour Tracker{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+  <div class="page-header">
+    <div>
+      <h2>Scan History</h2>
+      <p class="subtitle">History of all scan runs and per-source results</p>
+    </div>
+  </div>
+
+  {% if scans %}
+  <div class="table-wrap animate-in stagger-1">
+    <table>
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Trigger</th>
+          <th>Artist</th>
+          <th>Started</th>
+          <th>Duration</th>
+          <th>Found</th>
+          <th>Confirmed</th>
+          <th>Possible</th>
+          <th>Sources</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for scan in scans %}
+        <tr>
+          <td>
+            {% if scan.status == 'completed' %}
+              <span class="badge badge-success">completed</span>
+            {% elif scan.status == 'running' %}
+              <span class="badge badge-warning">running</span>
+            {% else %}
+              <span class="badge badge-error">{{ scan.status }}</span>
+            {% endif %}
+          </td>
+          <td><span class="badge badge-neutral">{{ scan.trigger }}</span></td>
+          <td>
+            {% if scan.artist %}
+              {{ scan.artist.name }}
+            {% else %}
+              <span class="text-muted">All artists</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="font-mono text-xs">{{ scan.started_at.strftime('%b %d, %I:%M %p') }}</span>
+          </td>
+          <td>
+            {% if scan.completed_at and scan.started_at %}
+              <span class="font-mono text-xs">
+                {{ ((scan.completed_at - scan.started_at).total_seconds())|int }}s
+              </span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="font-mono">{{ scan.events_found }}</td>
+          <td class="font-mono" style="color: var(--status-success);">{{ scan.new_confirmed }}</td>
+          <td class="font-mono" style="color: var(--status-warning);">{{ scan.new_possible }}</td>
+          <td>
+            {% if scan.source_results %}
+              {% set ok = scan.source_results|selectattr('fetch_success')|list|length %}
+              {% set fail = scan.source_results|rejectattr('fetch_success')|list|length %}
+              <span class="text-xs">
+                {% if ok > 0 %}<span style="color: var(--status-success);">{{ ok }}✓</span>{% endif %}
+                {% if fail > 0 %}<span style="color: var(--status-error);"> {{ fail }}✗</span>{% endif %}
+              </span>
+            {% endif %}
+          </td>
+        </tr>
+        {% if scan.error_summary %}
+        <tr>
+          <td colspan="9" style="padding: 0 var(--space-md) var(--space-sm);">
+            <div class="text-xs" style="color: var(--status-error);">{{ scan.error_summary }}</div>
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">📊</div>
+    <p>No scan history yet — scans will appear here after the first check</p>
+    <a href="/" class="btn btn-secondary">Back to Dashboard</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Review Inbox — Tour Tracker{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+  <div class="page-header">
+    <div>
+      <h2>Review Inbox</h2>
+      <p class="subtitle">{{ events|length }} possible match{{ 'es' if events|length != 1 else '' }} need{{ 's' if events|length == 1 else '' }} your review</p>
+    </div>
+  </div>
+
+  {% if events %}
+    {% for event in events %}
+    <div class="review-item animate-in stagger-{{ loop.index }}">
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="font-semibold" style="font-size: var(--text-lg);">
+            {% if event.artist %}{{ event.artist.name }}{% else %}Unknown{% endif %}
+          </span>
+          <span class="badge badge-warning ml-auto" style="margin-left: var(--space-sm);">
+            {{ (event.confidence_score * 100)|int }}% confidence
+          </span>
+        </div>
+        <span class="badge badge-neutral">{{ event.source_type }}</span>
+      </div>
+
+      <div class="mt-sm">
+        <div class="text-sm">
+          <strong>{{ event.event_name }}</strong>
+        </div>
+        <div class="flex gap-md mt-sm text-sm text-tertiary">
+          <span>📍 {{ event.venue }} · {{ event.city }}{% if event.region %}, {{ event.region }}{% endif %}</span>
+          <span>📅 {{ event.event_date.strftime('%b %d, %Y') if event.event_date else 'TBD' }}</span>
+        </div>
+      </div>
+
+      {% if event.match_reason %}
+      <div class="text-xs mt-sm" style="color: var(--status-info);">
+        Match: {{ event.match_reason }}
+      </div>
+      {% endif %}
+
+      {% if event.evidence_text %}
+      <div class="evidence">{{ event.evidence_text }}</div>
+      {% endif %}
+
+      {% if event.ticket_url %}
+      <div class="text-xs mt-sm">
+        <a href="{{ event.ticket_url }}" target="_blank" style="color: var(--text-secondary);">🎟 {{ event.ticket_url[:60] }}{% if event.ticket_url|length > 60 %}…{% endif %}</a>
+      </div>
+      {% endif %}
+
+      <div class="review-actions">
+        <form method="post" action="/review/{{ event.id }}/action" style="display: inline;">
+          <input type="hidden" name="action" value="confirm">
+          <button type="submit" class="btn btn-success btn-sm">✅ Confirm & Notify</button>
+        </form>
+        <form method="post" action="/review/{{ event.id }}/action" style="display: inline;">
+          <input type="hidden" name="action" value="confirm_silent">
+          <button type="submit" class="btn btn-secondary btn-sm">✅ Confirm (silent)</button>
+        </form>
+        <form method="post" action="/review/{{ event.id }}/action" style="display: inline;">
+          <input type="hidden" name="action" value="reject">
+          <button type="submit" class="btn btn-danger btn-sm">❌ Reject</button>
+        </form>
+        <form method="post" action="/review/{{ event.id }}/action" style="display: inline;">
+          <input type="hidden" name="action" value="mark_source_bad">
+          <button type="submit" class="btn btn-ghost btn-sm">🔧 Bad Source</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">✅</div>
+    <p>All clear — no events need review right now</p>
+    <a href="/" class="btn btn-secondary">Back to Dashboard</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

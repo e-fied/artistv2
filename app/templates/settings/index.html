@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Settings — Tour Tracker{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+  <div class="page-header">
+    <div>
+      <h2>Settings</h2>
+      <p class="subtitle">API keys, scheduling, and notifications</p>
+    </div>
+  </div>
+
+  <!-- Status messages -->
+  {% if request.query_params.get('success') == 'telegram_sent' %}
+    <div class="toast success mb-md" style="position: static; max-width: none;">✅ Test message sent to Telegram</div>
+  {% endif %}
+  {% if request.query_params.get('error') == 'telegram_failed' %}
+    <div class="toast error mb-md" style="position: static; max-width: none;">❌ Failed to send Telegram message — check your credentials</div>
+  {% endif %}
+  {% if request.query_params.get('error') == 'telegram_not_configured' %}
+    <div class="toast warning mb-md" style="position: static; max-width: none;">⚠️ Telegram not configured — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in your env file</div>
+  {% endif %}
+
+  <form method="post" action="/settings" style="max-width: 640px;">
+
+    <!-- API Keys (read-only, from env) -->
+    <div class="card mb-lg">
+      <div class="card-header">
+        <h3 class="card-title">API Keys</h3>
+        <span class="badge badge-neutral">from environment</span>
+      </div>
+      <p class="text-xs text-muted mb-md">API keys are loaded from environment variables and cannot be changed here. Update your <code class="font-mono">.env</code> file to change them.</p>
+
+      {% for sf in secret_fields_data %}
+      <div class="form-group" x-data="{ show: false }">
+        <label class="form-label">{{ sf.label }}</label>
+        <div class="secret-field">
+          <input type="text" class="form-input" readonly
+                 :value="show ? '{{ sf.raw_value }}' : '{{ sf.redacted }}'"
+                 style="{% if not sf.has_value %}color: var(--text-muted);{% endif %}">
+          {% if sf.has_value %}
+          <button type="button" class="secret-toggle" @click="show = !show"
+                  x-text="show ? '🙈' : '👁'">👁</button>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+
+      <!-- Test Telegram -->
+      <div class="mt-md">
+        <form method="post" action="/settings/test-telegram" style="display: inline;">
+          <button type="submit" class="btn btn-secondary btn-sm">Send Test Telegram</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Scheduling -->
+    <div class="card mb-lg">
+      <div class="card-header">
+        <h3 class="card-title">Scheduling</h3>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="scan_interval_hours">Scan Interval (hours)</label>
+          <input type="number" id="scan_interval_hours" name="scan_interval_hours"
+                 class="form-input" min="1" max="48"
+                 value="{{ settings.scan_interval_hours }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="timezone">Timezone</label>
+          <input type="text" id="timezone" name="timezone" class="form-input"
+                 value="{{ settings.timezone }}">
+        </div>
+      </div>
+    </div>
+
+    <!-- Crawl4AI -->
+    <div class="card mb-lg">
+      <div class="card-header">
+        <h3 class="card-title">Crawl4AI</h3>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="crawl4ai_base_url">Base URL</label>
+        <input type="text" id="crawl4ai_base_url" name="crawl4ai_base_url"
+               class="form-input font-mono" value="{{ settings.crawl4ai_base_url }}">
+        <div class="form-hint">Default: http://crawl4ai:11235 (Docker sidecar)</div>
+      </div>
+    </div>
+
+    <!-- Notifications -->
+    <div class="card mb-lg">
+      <div class="card-header">
+        <h3 class="card-title">Notifications</h3>
+      </div>
+
+      <div class="form-group">
+        <label class="form-check">
+          <input type="checkbox" name="notify_confirmed" value="true"
+                 {% if settings.notify_confirmed %}checked{% endif %}>
+          <span class="text-sm">Notify on confirmed events</span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-check">
+          <input type="checkbox" name="notify_review_summary" value="true"
+                 {% if settings.notify_review_summary %}checked{% endif %}>
+          <span class="text-sm">Send review summary for possible matches</span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-check">
+          <input type="checkbox" name="daily_digest_enabled" value="true"
+                 {% if settings.daily_digest_enabled %}checked{% endif %}>
+          <span class="text-sm">Enable daily digest</span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="daily_digest_time">Daily Digest Time</label>
+        <input type="time" id="daily_digest_time" name="daily_digest_time"
+               class="form-input" value="{{ settings.daily_digest_time }}"
+               style="max-width: 200px;">
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary btn-lg">Save Settings</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

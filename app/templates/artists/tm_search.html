@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Link Ticketmaster — {{ artist.name }} — Tour Tracker{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+  <div class="page-header">
+    <div>
+      <h2>Link Ticketmaster</h2>
+      <p class="subtitle">Find the correct Ticketmaster profile for {{ artist.name }}</p>
+    </div>
+    <a href="/artists/{{ artist.id }}/edit" class="btn btn-secondary">← Back to Edit</a>
+  </div>
+
+  {% if not has_api_key %}
+  <div class="card">
+    <div class="empty-state">
+      <div class="empty-icon">🔑</div>
+      <p>Ticketmaster API key not configured. Set <code class="font-mono">TICKETMASTER_API_KEY</code> in your environment.</p>
+      <a href="/settings" class="btn btn-secondary">Go to Settings</a>
+    </div>
+  </div>
+  {% elif results %}
+  <div class="mb-md text-sm text-tertiary">
+    Found {{ results|length }} results for "{{ artist.name }}" — pick the correct one:
+  </div>
+
+  <div class="card-grid">
+    {% for r in results %}
+    <div class="card animate-in stagger-{{ loop.index }}">
+      <div class="flex items-center gap-sm mb-md">
+        {% if r.image_url %}
+          <img src="{{ r.image_url }}" alt="{{ r.name }}" 
+               style="width: 48px; height: 48px; border-radius: var(--radius-md); object-fit: cover;">
+        {% endif %}
+        <div>
+          <div class="font-semibold">{{ r.name }}</div>
+          <div class="text-xs text-muted">{{ r.segment }} {{ '· ' + r.genre if r.genre else '' }}</div>
+        </div>
+      </div>
+
+      <div class="text-xs text-muted font-mono mb-md">
+        ID: {{ r.id }}<br>
+        {{ r.upcoming_events }} upcoming event{{ 's' if r.upcoming_events != 1 else '' }}
+      </div>
+
+      <form method="post" action="/artists/{{ artist.id }}/tm-link">
+        <input type="hidden" name="attraction_id" value="{{ r.id }}">
+        <input type="hidden" name="attraction_name" value="{{ r.name }}">
+        <button type="submit" class="btn btn-primary btn-sm w-full">Link This Artist</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="empty-state">
+      <div class="empty-icon">🔍</div>
+      <p>No Ticketmaster results found for "{{ artist.name }}"</p>
+      <p class="text-xs text-muted">The app will fall back to keyword search when scanning.</p>
+      <a href="/artists/{{ artist.id }}/edit" class="btn btn-secondary">Back to Edit</a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

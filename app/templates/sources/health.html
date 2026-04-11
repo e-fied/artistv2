@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Source Health — Tour Tracker{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+  <div class="page-header">
+    <div>
+      <h2>Source Health</h2>
+      <p class="subtitle">Monitor crawler and API health across all artists</p>
+    </div>
+  </div>
+
+  <div class="flex gap-md mb-lg">
+    <div class="stat-card" style="flex: 1;">
+      <div class="stat-label">Total Sources</div>
+      <div class="stat-value">{{ healthy_sources|length + failing_sources|length }}</div>
+    </div>
+    <div class="stat-card" style="flex: 1;">
+      <div class="stat-label">Failing Sources</div>
+      <div class="stat-value" style="color: {% if failing_sources|length > 0 %}var(--status-error){% else %}var(--status-success){% endif %};">
+        {{ failing_sources|length }}
+      </div>
+    </div>
+  </div>
+
+  {% if failing_sources %}
+  <h3 class="font-semibold mb-md" style="color: var(--status-error);">Failing Sources</h3>
+  <div class="card-grid mb-xl">
+    {% for source in failing_sources %}
+    <div class="card">
+      <div class="flex items-center justify-between mb-sm">
+        <div class="font-semibold">{{ source.artist.name }}</div>
+        <span class="badge badge-error">{{ source.consecutive_failures }} failures</span>
+      </div>
+      
+      <div class="text-sm mb-sm text-tertiary">
+        {% if source.source_type == 'ticketmaster' %}
+          <span class="badge badge-neutral">Ticketmaster</span>
+        {% else %}
+          <div class="font-mono text-xs break-all" style="word-break: break-all;">{{ source.url }}</div>
+        {% endif %}
+      </div>
+
+      <div class="text-xs text-muted mb-sm">
+        Last checked: {{ source.last_checked_at.strftime('%Y-%m-%d %H:%M') if source.last_checked_at else 'Never' }}
+      </div>
+
+      {% if source.last_error %}
+      <div class="code-block text-xs" style="color: var(--status-error); white-space: pre-wrap;">
+        {{ source.last_error }}
+      </div>
+      {% endif %}
+      
+      <div class="mt-md pt-sm" style="border-top: 1px solid var(--border-subtle);">
+        <form method="post" action="/artists/{{ source.artist_id }}/scan" style="display:inline;">
+          <button type="submit" class="btn btn-secondary btn-sm">Force Retry</button>
+        </form>
+        <a href="/artists/{{ source.artist_id }}/edit" class="btn btn-ghost btn-sm ml-sm">Edit Artist</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state mb-xl" style="padding: var(--space-lg);">
+    <div class="empty-icon" style="color: var(--status-success);">✓</div>
+    <p>All sources are healthy</p>
+  </div>
+  {% endif %}
+
+  <h3 class="font-semibold mb-md text-tertiary">Healthy Sources</h3>
+  {% if healthy_sources %}
+  <div class="card-grid">
+    {% for source in healthy_sources[:50] %}
+    <div class="card" style="opacity: 0.8; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
+      <div class="flex items-center justify-between mb-sm">
+        <div class="font-semibold text-sm">{{ source.artist.name }}</div>
+        <span class="status-dot success" title="Healthy"></span>
+      </div>
+      <div class="text-xs text-muted font-mono mb-xs break-all">
+        {% if source.source_type == 'ticketmaster' %}
+          Ticketmaster API
+        {% else %}
+          {{ source.url }}
+        {% endif %}
+      </div>
+      <div class="text-xs text-tertiary">
+        Last success: {{ source.last_success_at.strftime('%Y-%m-%d %H:%M') if source.last_success_at else 'N/A' }}
+      </div>
+    </div>
+    {% endfor %}
+    
+    {% if healthy_sources|length > 50 %}
+      <div class="text-xs text-muted mt-sm mx-auto">Showing 50 of {{ healthy_sources|length }} healthy sources...</div>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="text-sm text-tertiary">No healthy sources found.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+jinja2>=3.1.4
+python-multipart>=0.0.12
+
+# Database
+sqlalchemy>=2.0.35
+alembic>=1.14.0
+
+# Configuration
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+python-dotenv>=1.0.1
+
+# HTTP client (for crawl4ai, ticketmaster, telegram, firecrawl)
+httpx>=0.28.0
+
+# Scheduler
+apscheduler>=3.10.4
+
+# LLM
+google-genai>=1.0.0
+
+# Firecrawl (backup crawler)
+firecrawl-py>=1.13.5
+
+# Utilities
+pytz>=2024.1

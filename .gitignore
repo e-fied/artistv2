@@ -1,0 +1,30 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# App data (runtime)
+/app/data/
+*.db
+*.db-journal
+
+# Environment
+.env
+tourtracker.env
+
+# Logs
+*.log

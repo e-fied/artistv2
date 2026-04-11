@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Tour Tracker{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div>
+      <h2>Dashboard</h2>
+      <p class="subtitle">Track artists & comedians near your city</p>
+    </div>
+    <div class="flex gap-sm">
+      <form method="post" action="/artists/scan-all" style="display: inline;">
+        <button type="submit" class="btn btn-secondary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+          Check All
+        </button>
+      </form>
+      <a href="/artists/new" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Artist
+      </a>
+    </div>
+  </div>
+
+  <!-- Stats Row -->
+  <div class="stats-row animate-in stagger-1">
+    <div class="stat-card">
+      <div class="stat-label">Confirmed Events</div>
+      <div class="stat-value" style="color: var(--status-success);">{{ total_confirmed }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Need Review</div>
+      <div class="stat-value" style="color: var(--status-warning);">{{ total_possible }}</div>
+      {% if total_possible > 0 %}
+      <div class="stat-detail">
+        <a href="/review" class="btn btn-ghost btn-sm" style="padding: 0; color: var(--status-warning);">Review now →</a>
+      </div>
+      {% endif %}
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Sources Failing</div>
+      <div class="stat-value" style="color: {% if failing_sources > 0 %}var(--status-error){% else %}var(--text-muted){% endif %};">{{ failing_sources }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Scan Interval</div>
+      <div class="stat-value">{{ scan_interval_hours }}h</div>
+      <div class="stat-detail">
+        {% if last_scan %}
+          Last: {{ last_scan.started_at.strftime('%b %d, %I:%M %p') }}
+        {% else %}
+          No scans yet
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Artists Grid -->
+  <div class="flex items-center justify-between mb-md animate-in stagger-2">
+    <h3 style="font-size: var(--text-lg); font-weight: 700; letter-spacing: -0.02em;">
+      Artists & Comedians
+    </h3>
+    <span class="text-xs text-muted font-mono">{{ artists|length }} tracked</span>
+  </div>
+
+  {% if artists %}
+  <div class="card-grid animate-in stagger-3">
+    {% for item in artists %}
+    <div class="artist-card {% if item.artist.is_paused %}paused{% endif %}">
+      <div class="artist-name">
+        {% if item.artist.artist_type == 'comedy' %}🎤{% else %}🎵{% endif %}
+        {{ item.artist.name }}
+        {% if item.artist.is_paused %}
+          <span class="badge badge-neutral" style="font-size: 0.625rem;">PAUSED</span>
+        {% endif %}
+      </div>
+
+      <div class="artist-meta">
+        <span class="badge badge-type">{{ item.artist.artist_type }}</span>
+        <span>{{ item.event_count }} event{{ 's' if item.event_count != 1 else '' }}</span>
+        {% if item.possible_count > 0 %}
+          <span style="color: var(--status-warning);">{{ item.possible_count }} pending</span>
+        {% endif %}
+      </div>
+
+      <!-- Source health -->
+      <div class="artist-sources">
+        {% for source in item.sources %}
+          {% if source.source_type == 'ticketmaster' %}
+            {% if source.last_success_at %}
+              <span class="badge badge-success" title="Ticketmaster OK">TM ✓</span>
+            {% elif source.consecutive_failures > 0 %}
+              <span class="badge badge-error" title="Ticketmaster failing">TM ✗</span>
+            {% else %}
+              <span class="badge badge-neutral" title="Ticketmaster not checked">TM</span>
+            {% endif %}
+          {% else %}
+            {% if source.consecutive_failures >= 3 %}
+              <span class="badge badge-error" title="{{ source.url or 'Website' }}: {{ source.consecutive_failures }} failures">
+                Web ✗
+              </span>
+            {% elif source.last_success_at %}
+              <span class="badge badge-success" title="{{ source.url or 'Website' }}: OK">Web ✓</span>
+            {% else %}
+              <span class="badge badge-neutral" title="{{ source.url or 'Website' }}">Web</span>
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <div class="text-xs text-muted font-mono mt-sm">
+        {% if item.last_checked %}
+          Checked {{ item.last_checked.strftime('%b %d, %I:%M %p') }}
+        {% else %}
+          Not checked yet
+        {% endif %}
+      </div>
+
+      <div class="artist-actions">
+        <a href="/artists/{{ item.artist.id }}/edit" class="btn btn-ghost btn-sm">Edit</a>
+        <form method="post" action="/artists/{{ item.artist.id }}/scan" style="display:inline;">
+          <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-success);">Check Now</button>
+        </form>
+        <form method="post" action="/artists/{{ item.artist.id }}/toggle-pause" style="display:inline;">
+          <button type="submit" class="btn btn-ghost btn-sm">
+            {% if item.artist.is_paused %}Resume{% else %}Pause{% endif %}
+          </button>
+        </form>
+        <form method="post" action="/artists/{{ item.artist.id }}/delete"
+              onsubmit="return confirm('Delete {{ item.artist.name }}?')"
+              style="display:inline; margin-left: auto;">
+          <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-error);">Delete</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state animate-in stagger-3">
+    <div class="empty-icon">🎤</div>
+    <p>No artists tracked yet</p>
+    <a href="/artists/new" class="btn btn-primary">Add Your First Artist</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

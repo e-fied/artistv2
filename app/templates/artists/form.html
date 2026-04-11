@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}{% if editing %}Edit {{ artist.name }}{% else %}Add Artist{% endif %} — Tour Tracker{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+  <div class="page-header">
+    <div>
+      <h2>{% if editing %}Edit Artist{% else %}Add Artist{% endif %}</h2>
+      <p class="subtitle">{% if editing %}Update details for {{ artist.name }}{% else %}Start tracking a new artist or comedian{% endif %}</p>
+    </div>
+    <a href="/" class="btn btn-secondary">← Back</a>
+  </div>
+
+  <div class="card" style="max-width: 640px;">
+    <form method="post" action="{% if editing %}/artists/{{ artist.id }}/edit{% else %}/artists/new{% endif %}">
+
+      <div class="form-group">
+        <label class="form-label" for="name">Name</label>
+        <input type="text" id="name" name="name" class="form-input"
+               value="{{ artist.name if artist else '' }}"
+               placeholder="e.g. Dave Chappelle" required>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="artist_type">Type</label>
+          <select id="artist_type" name="artist_type" class="form-select">
+            <option value="music" {% if artist and artist.artist_type == 'music' %}selected{% endif %}>🎵 Music</option>
+            <option value="comedy" {% if artist and artist.artist_type == 'comedy' %}selected{% endif %}>🎤 Comedy</option>
+          </select>
+        </div>
+
+        {% if editing %}
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <div class="flex gap-md mt-sm">
+            <label class="form-check">
+              <input type="checkbox" name="is_paused" value="true"
+                     {% if artist and artist.is_paused %}checked{% endif %}>
+              <span class="text-sm">Paused</span>
+            </label>
+            <label class="form-check">
+              <input type="checkbox" name="notify_enabled" value="true"
+                     {% if not editing or (artist and artist.notify_enabled) %}checked{% endif %}>
+              <span class="text-sm">Notifications</span>
+            </label>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="website_url">Official Website / Tour Page</label>
+        <input type="url" id="website_url" name="website_url" class="form-input"
+               value="{% if not editing %}{% elif artist.sources %}{% for s in artist.sources if s.source_type in ('official_website', 'manual_url') %}{{ s.url }}{% endfor %}{% endif %}"
+               placeholder="https://artist-name.com/tour">
+        <div class="form-hint">The app will crawl this page for tour dates</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="notes">Notes</label>
+        <textarea id="notes" name="notes" class="form-textarea"
+                  placeholder="Optional notes about this artist...">{{ artist.notes if artist and artist.notes else '' }}</textarea>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="form-group">
+        <label class="form-label">Home Locations</label>
+        <div class="form-hint mb-md">Events in these locations will always be tracked</div>
+        {% for loc in locations %}
+          <label class="form-check" style="margin-bottom: var(--space-xs);">
+            <input type="checkbox" name="location_ids" value="{{ loc.id }}"
+                   {% if not editing and loc.is_default %}checked{% endif %}
+                   {% if editing and loc.id in (artist_location_ids or []) %}checked{% endif %}>
+            <span class="text-sm">{{ loc.name }}</span>
+            {% if loc.is_default %}<span class="badge badge-neutral">default</span>{% endif %}
+          </label>
+        {% endfor %}
+        {% if not locations %}
+          <p class="text-xs text-muted">No location profiles yet. <a href="/locations/new">Create one</a>.</p>
+        {% endif %}
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Travel Cities</label>
+        <div class="form-hint mb-md">Additional cities you'd travel to see this artist</div>
+        {% for loc in locations %}
+          {% if not loc.is_default %}
+          <label class="form-check" style="margin-bottom: var(--space-xs);">
+            <input type="checkbox" name="travel_location_ids" value="{{ loc.id }}"
+                   {% if editing and loc.id in (artist_travel_ids or []) %}checked{% endif %}>
+            <span class="text-sm">{{ loc.name }}</span>
+          </label>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary btn-lg">
+          {% if editing %}Save Changes{% else %}Add Artist{% endif %}
+        </button>
+        <a href="/" class="btn btn-secondary btn-lg">Cancel</a>
+      </div>
+    </form>
+  </div>
+
+  {% if editing %}
+  <!-- Ticketmaster Identity -->
+  <div class="card mt-lg" style="max-width: 640px;">
+    <div class="card-header">
+      <h3 class="card-title">Ticketmaster Identity</h3>
+    </div>
+
+    {% if artist.ticketmaster_attraction_id %}
+    <div class="flex items-center justify-between">
+      <div>
+        <div class="flex items-center gap-sm">
+          <span class="status-dot success"></span>
+          <span class="font-semibold">{{ artist.ticketmaster_attraction_name or 'Linked' }}</span>
+        </div>
+        <div class="text-xs text-muted font-mono mt-sm">ID: {{ artist.ticketmaster_attraction_id }}</div>
+      </div>
+      <div class="flex gap-xs">
+        <a href="/artists/{{ artist.id }}/tm-search" class="btn btn-ghost btn-sm">Change</a>
+        <form method="post" action="/artists/{{ artist.id }}/tm-unlink" style="display: inline;">
+          <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-error);">Unlink</button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <div class="flex items-center justify-between">
+      <div>
+        <div class="text-sm text-tertiary">No Ticketmaster attraction linked</div>
+        <div class="text-xs text-muted mt-sm">Link an attraction for precise event matching (recommended)</div>
+      </div>
+      <a href="/artists/{{ artist.id }}/tm-search" class="btn btn-secondary btn-sm">Search Ticketmaster</a>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if editing and artist.sources %}
+  <div class="card mt-lg" style="max-width: 640px;">
+    <div class="card-header">
+      <h3 class="card-title">Sources</h3>
+    </div>
+
+    {% for source in artist.sources %}
+    <div class="flex items-center justify-between" style="padding: var(--space-sm) 0; border-bottom: 1px solid var(--border-subtle);">
+      <div>
+        <div class="flex items-center gap-sm">
+          {% if source.source_type == 'ticketmaster' %}
+            <span class="badge badge-neutral">Ticketmaster</span>
+          {% elif source.source_type == 'official_website' %}
+            <span class="badge badge-neutral">Website</span>
+          {% else %}
+            <span class="badge badge-neutral">{{ source.source_type }}</span>
+          {% endif %}
+          {% if source.consecutive_failures >= 3 %}
+            <span class="status-dot error"></span>
+          {% elif source.last_success_at %}
+            <span class="status-dot success"></span>
+          {% else %}
+            <span class="status-dot idle"></span>
+          {% endif %}
+        </div>
+        {% if source.url %}
+        <div class="text-xs text-muted font-mono mt-sm" style="word-break: break-all;">{{ source.url }}</div>
+        {% endif %}
+        <div class="text-xs text-muted mt-sm">
+          Mode: {{ source.fetch_mode }}
+          {% if source.preferred_crawler %} · Prefers: {{ source.preferred_crawler }}{% endif %}
+          {% if source.consecutive_failures > 0 %} · {{ source.consecutive_failures }} failure(s){% endif %}
+        </div>
+      </div>
+      <form method="post" action="/artists/sources/{{ source.id }}/delete"
+            onsubmit="return confirm('Remove this source?')">
+        <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-error);">Remove</button>
+      </form>
+    </div>
+    {% endfor %}
+
+    <div class="mt-md">
+      <form method="post" action="/artists/{{ artist.id }}/sources/add" class="flex gap-sm items-center mb-sm">
+        <input type="hidden" name="source_type" value="manual_url">
+        <input type="url" name="url" class="form-input" placeholder="https://artist-site.com/shows" style="flex: 1;">
+        <button type="submit" class="btn btn-secondary btn-sm">Add Source</button>
+      </form>
+      
+      {% set has_official = namespace(value=false) %}
+      {% for source in artist.sources %}
+        {% if source.source_type == 'official_website' %}
+          {% set has_official.value = true %}
+        {% endif %}
+      {% endfor %}
+
+      {% if not has_official.value %}
+      <div class="flex items-center justify-between" style="padding: var(--space-md); background: rgba(250, 250, 250, 0.03); border-radius: var(--radius-md); border: 1px dashed var(--border-subtle);">
+        <div>
+          <div class="text-sm font-semibold">Missing Tour Website</div>
+          <div class="text-xs text-muted mt-xs">Let AI find the official tour page automatically.</div>
+        </div>
+        <form method="post" action="/artists/{{ artist.id }}/auto-find">
+          <button type="submit" class="btn btn-primary btn-sm">Auto-find Official URL</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+

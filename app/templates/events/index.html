@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Events — Tour Tracker{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+  <div class="page-header">
+    <div>
+      <h2>Event History</h2>
+      <p class="subtitle">All discovered events across your tracked artists</p>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="card mb-lg">
+    <form method="get" action="/events" class="flex gap-md items-center" style="flex-wrap: wrap;">
+      <div class="form-group" style="margin-bottom: 0; min-width: 160px;">
+        <select name="status" class="form-select">
+          <option value="">All statuses</option>
+          <option value="confirmed" {% if filter_status == 'confirmed' %}selected{% endif %}>✅ Confirmed</option>
+          <option value="possible" {% if filter_status == 'possible' %}selected{% endif %}>⚠️ Possible</option>
+          <option value="rejected" {% if filter_status == 'rejected' %}selected{% endif %}>❌ Rejected</option>
+          <option value="expired" {% if filter_status == 'expired' %}selected{% endif %}>⏰ Expired</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom: 0; min-width: 200px;">
+        <select name="artist_id" class="form-select">
+          <option value="0">All artists</option>
+          {% for artist in artists %}
+            <option value="{{ artist.id }}" {% if filter_artist_id == artist.id %}selected{% endif %}>{{ artist.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+      {% if filter_status or filter_artist_id %}
+        <a href="/events" class="btn btn-ghost btn-sm">Clear</a>
+      {% endif %}
+    </form>
+  </div>
+
+  {% if events %}
+  <div class="table-wrap animate-in stagger-1">
+    <table>
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Artist</th>
+          <th>Event</th>
+          <th>Venue</th>
+          <th>Location</th>
+          <th>Date</th>
+          <th>Match</th>
+          <th>Source</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in events %}
+        <tr>
+          <td>
+            {% if event.status == 'confirmed' %}
+              <span class="badge badge-success">confirmed</span>
+            {% elif event.status == 'possible' %}
+              <span class="badge badge-warning">possible</span>
+            {% elif event.status == 'rejected' %}
+              <span class="badge badge-error">rejected</span>
+            {% else %}
+              <span class="badge badge-neutral">{{ event.status }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="font-semibold">{{ event.artist.name if event.artist else '—' }}</span>
+          </td>
+          <td class="text-sm">{{ event.event_name }}</td>
+          <td class="text-sm">{{ event.venue }}</td>
+          <td>
+            <span class="text-sm">{{ event.city }}</span>
+            {% if event.region %}<span class="text-xs text-muted">, {{ event.region }}</span>{% endif %}
+          </td>
+          <td>
+            <span class="font-mono text-sm">{{ event.event_date.strftime('%Y-%m-%d') if event.event_date else 'TBD' }}</span>
+          </td>
+          <td>
+            {% if event.match_reason %}
+              <span class="text-xs text-muted">{{ event.match_reason }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge badge-neutral">{{ event.source_type }}</span>
+            {% if event.ticket_url %}
+              <a href="{{ event.ticket_url }}" target="_blank" class="btn btn-ghost btn-sm" style="padding: 2px 4px;">🎟</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">📅</div>
+    <p>No events found{% if filter_status or filter_artist_id %} matching your filters{% endif %}</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
