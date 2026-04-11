@@ -18,7 +18,10 @@ def create_scheduler() -> BackgroundScheduler:
     global scheduler
 
     jobstores = {
-        "default": SQLAlchemyJobStore(url=f"sqlite:///{DB_PATH}")
+        "default": SQLAlchemyJobStore(
+            url=f"sqlite:///{DB_PATH}",
+            engine_options={"connect_args": {"check_same_thread": False, "timeout": 30}}
+        )
     }
 
     scheduler = BackgroundScheduler(
