@@ -35,9 +35,7 @@ def events_page(
     events = query.order_by(Event.event_date.desc().nullslast(), Event.first_seen_at.desc()).limit(200).all()
     artists = db.query(Artist).order_by(Artist.name).all()
 
-    return request.app.state.templates.TemplateResponse(
-        "events/index.html",
-        {
+    return request.app.state.templates.TemplateResponse(request=request, name="events/index.html", context={
             "request": request,
             "events": events,
             "artists": artists,
@@ -60,9 +58,7 @@ def review_inbox(request: Request, db: Session = Depends(get_db)):
         .all()
     )
 
-    return request.app.state.templates.TemplateResponse(
-        "review/index.html",
-        {
+    return request.app.state.templates.TemplateResponse(request=request, name="review/index.html", context={
             "request": request,
             "events": events,
         },

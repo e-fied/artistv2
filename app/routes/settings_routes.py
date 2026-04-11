@@ -29,9 +29,7 @@ def settings_page(request: Request, db: Session = Depends(get_db)):
             "redacted": settings.redacted(field_name) or "Not set",
         })
 
-    return request.app.state.templates.TemplateResponse(
-        "settings/index.html",
-        {
+    return request.app.state.templates.TemplateResponse(request=request, name="settings/index.html", context={
             "request": request,
             "settings": settings,
             "secret_fields_data": secret_fields_data,

@@ -16,9 +16,7 @@ router = APIRouter(prefix="/locations")
 def locations_page(request: Request, db: Session = Depends(get_db)):
     """Render the locations management page."""
     profiles = db.query(LocationProfile).order_by(LocationProfile.name).all()
-    return request.app.state.templates.TemplateResponse(
-        "locations/index.html",
-        {
+    return request.app.state.templates.TemplateResponse(request=request, name="locations/index.html", context={
             "request": request,
             "profiles": profiles,
         },
@@ -28,9 +26,7 @@ def locations_page(request: Request, db: Session = Depends(get_db)):
 @router.get("/new")
 def new_location_page(request: Request):
     """Render the new location form."""
-    return request.app.state.templates.TemplateResponse(
-        "locations/form.html",
-        {
+    return request.app.state.templates.TemplateResponse(request=request, name="locations/form.html", context={
             "request": request,
             "profile": None,
             "editing": False,
@@ -86,9 +82,7 @@ def edit_location_page(
     if not profile:
         return RedirectResponse(url="/locations", status_code=303)
 
-    return request.app.state.templates.TemplateResponse(
-        "locations/form.html",
-        {
+    return request.app.state.templates.TemplateResponse(request=request, name="locations/form.html", context={
             "request": request,
             "profile": profile,
             "editing": True,

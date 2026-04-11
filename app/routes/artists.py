@@ -20,9 +20,7 @@ router = APIRouter(prefix="/artists")
 def add_artist_page(request: Request, db: Session = Depends(get_db)):
     """Render the add artist form."""
     locations = db.query(LocationProfile).order_by(LocationProfile.name).all()
-    return request.app.state.templates.TemplateResponse(
-        "artists/form.html",
-        {
+    return request.app.state.templates.TemplateResponse(request=request, name="artists/form.html", context={
             "request": request,
             "artist": None,
             "locations": locations,
@@ -103,9 +101,7 @@ def edit_artist_page(
     artist_location_ids = [al.location_profile_id for al in artist.locations if not al.is_travel_city]
     artist_travel_ids = [al.location_profile_id for al in artist.locations if al.is_travel_city]
 
-    return request.app.state.templates.TemplateResponse(
-        "artists/form.html",
-        {
+    return request.app.state.templates.TemplateResponse(request=request, name="artists/form.html", context={
             "request": request,
             "artist": artist,
             "locations": locations,
@@ -224,9 +220,7 @@ def tm_search_page(request: Request, artist_id: int, db: Session = Depends(get_d
         results = client.search_attractions(artist.name, size=8)
         client.close()
 
-    return request.app.state.templates.TemplateResponse(
-        "artists/tm_search.html",
-        {
+    return request.app.state.templates.TemplateResponse(request=request, name="artists/tm_search.html", context={
             "request": request,
             "artist": artist,
             "results": results,

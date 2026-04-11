@@ -22,9 +22,7 @@ def scans_page(request: Request, db: Session = Depends(get_db)):
         .all()
     )
 
-    return request.app.state.templates.TemplateResponse(
-        "scans/index.html",
-        {
+    return request.app.state.templates.TemplateResponse(request=request, name="scans/index.html", context={
             "request": request,
             "scans": scans,
         },

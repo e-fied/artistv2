@@ -85,9 +85,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "last_checked": most_recent_check,
         })
 
-    return request.app.state.templates.TemplateResponse(
-        "dashboard.html",
-        {
+    return request.app.state.templates.TemplateResponse(request=request, name="dashboard.html", context={
             "request": request,
             "artists": artist_summaries,
             "total_confirmed": total_confirmed,
