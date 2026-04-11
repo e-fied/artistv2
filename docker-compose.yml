@@ -5,9 +5,9 @@ services:
     ports:
       - "5001:8000"
     volumes:
-      - /mnt/user/appdata/tourtracker/data:/app/data
+      - ./data:/app/data
     env_file:
-      - /mnt/user/appdata/tourtracker/tourtracker.env
+      - .env
     depends_on:
       crawl4ai:
         condition: service_healthy
