@@ -79,13 +79,18 @@ class CrawlerService:
                 response.raise_for_status()
                 data = response.json()
                 
-                # Depending on Crawl4AI version, it could be a list of results
                 results = data.get("results")
                 if results and len(results) > 0:
-                    return results[0].get("markdown")
+                    md_val = results[0].get("markdown")
+                    if isinstance(md_val, dict):
+                        return md_val.get("fit_markdown") or md_val.get("raw") or str(md_val)
+                    return md_val
                 # Fallback structure just in case
                 if "markdown" in data:
-                    return data["markdown"]
+                    md_val = data["markdown"]
+                    if isinstance(md_val, dict):
+                        return md_val.get("fit_markdown") or md_val.get("raw") or str(md_val)
+                    return md_val
                 
                 logger.error(f"Crawl4AI returned success but no markdown found: {data.keys()}")
                 return None
