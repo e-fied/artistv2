@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}System Logs — Tour Tracker{% endblock %}
+
+{% block content %}
+<div class="animate-in" x-data="logViewer()">
+  <div class="page-header">
+    <div>
+      <h2>System Logs</h2>
+      <p class="subtitle">Live tail of application background tasks</p>
+    </div>
+    <div class="flex gap-sm">
+      <button class="btn btn-secondary btn-sm" @click="fetchLogs()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; margin-right: 6px;">
+          <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <div class="card p-0" style="background: rgba(0,0,0,0.5); border-color: rgba(255,255,255,0.1);">
+    <div style="padding: var(--space-xs) var(--space-sm); border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.02);" class="flex justify-between items-center">
+      <span class="text-xs font-mono text-tertiary">data/logs/app.log</span>
+      <label class="flex items-center gap-xs text-xs cursor-pointer">
+        <input type="checkbox" x-model="autoRefresh" class="form-checkbox" style="width: 14px; height: 14px;">
+        Auto-refresh
+      </label>
+    </div>
+    <div 
+      x-ref="logContainer"
+      class="font-mono text-xs p-md" 
+      style="height: 600px; overflow-y: auto; white-space: pre-wrap; color: var(--text-secondary); line-height: 1.5;"
+      x-text="logs || 'Loading logs...'"
+    ></div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('logViewer', () => ({
+        logs: '',
+        autoRefresh: true,
+        interval: null,
+        
+        init() {
+            this.fetchLogs();
+            this.$watch('autoRefresh', value => {
+                if (value) this.startInterval();
+                else this.stopInterval();
+            });
+            this.startInterval();
+        },
+        
+        startInterval() {
+            if (this.interval) clearInterval(this.interval);
+            this.interval = setInterval(() => {
+                if (this.autoRefresh) this.fetchLogs(true);
+            }, 3000);
+        },
+        
+        stopInterval() {
+            if (this.interval) clearInterval(this.interval);
+        },
+        
+        fetchLogs(isSilent = false) {
+            fetch('/logs/tail?lines=200')
+                .then(r => r.json())
+                .then(data => {
+                    const wasAtBottom = this.isAtBottom();
+                    this.logs = data.logs;
+                    
+                    if (wasAtBottom) {
+                        this.$nextTick(() => this.scrollToBottom());
+                    }
+                });
+        },
+
+        isAtBottom() {
+            const el = this.$refs.logContainer;
+            if (!el) return true;
+            return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+        },
+
+        scrollToBottom() {
+            const el = this.$refs.logContainer;
+            if (el) el.scrollTop = el.scrollHeight;
+        }
+    }))
+})
+</script>
+{% endblock %}

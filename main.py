@@ -102,6 +102,7 @@ from app.routes.locations import router as locations_router  # noqa: E402
 from app.routes.events import router as events_router  # noqa: E402
 from app.routes.scans import router as scans_router  # noqa: E402
 from app.routes.sources import router as sources_router  # noqa: E402
+from app.routes.logs import router as logs_router  # noqa: E402
 
 app.include_router(health_router)
 app.include_router(dashboard_router)
@@ -111,3 +112,4 @@ app.include_router(locations_router)
 app.include_router(events_router)
 app.include_router(scans_router)
 app.include_router(sources_router)
+app.include_router(logs_router)
