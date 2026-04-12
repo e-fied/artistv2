@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import re
 from html import unescape
 from typing import Optional
@@ -55,7 +56,7 @@ class CrawlerService:
                 markdown = self._fetch_firecrawl(url)
 
             if markdown:
-                enriched_markdown = self._append_seated_events(url, markdown)
+                enriched_markdown = self._append_embedded_events(url, markdown)
                 return enriched_markdown, crawler
             
             logger.warning(f"{crawler} failed for {url}. Falling back...")
@@ -114,36 +115,48 @@ class CrawlerService:
             logger.error(f"Firecrawl error: {e}")
             return None
 
-    def _append_seated_events(self, url: str, markdown: str) -> str:
-        """Append Seated widget events when a tour page loads dates client-side."""
-        seated_markdown = self._fetch_seated_events_markdown(url)
-        if not seated_markdown:
+    def _append_embedded_events(self, url: str, markdown: str) -> str:
+        """Append event data exposed outside Crawl4AI's rendered markdown."""
+        embedded_markdown = self._fetch_embedded_events_markdown(url)
+        if not embedded_markdown:
             return markdown
 
-        return f"{markdown}\n\n{seated_markdown}"
+        return f"{markdown}\n\n{embedded_markdown}"
 
-    def _fetch_seated_events_markdown(self, url: str) -> Optional[str]:
-        """Fetch events directly from Seated's widget API if the page uses it."""
+    def _fetch_embedded_events_markdown(self, url: str) -> Optional[str]:
+        """Fetch events from common structured-data and widget backends."""
         try:
             with httpx.Client(timeout=20.0, follow_redirects=True) as client:
                 page_response = client.get(url)
                 page_response.raise_for_status()
                 page_html = page_response.text
 
-                artist_id = self._find_seated_artist_id(client, url, page_html)
-                if not artist_id:
-                    return None
+                sections = []
 
-                api_response = client.get(
-                    f"https://cdn.seated.com/api/tour/{artist_id}",
-                    params={"include": "tour-events"},
-                    headers={"X-Client-Version": "tourtracker"},
-                )
-                api_response.raise_for_status()
-                return self._seated_api_to_markdown(api_response.json())
+                json_ld_markdown = self._json_ld_events_to_markdown(page_html)
+                if json_ld_markdown:
+                    sections.append(json_ld_markdown)
+
+                artist_id = self._find_seated_artist_id(client, url, page_html)
+                if artist_id:
+                    seated_markdown = self._fetch_seated_api_events_markdown(client, artist_id)
+                    if seated_markdown:
+                        sections.append(seated_markdown)
+
+                return "\n\n".join(sections) if sections else None
         except Exception as e:
-            logger.warning(f"Seated widget enrichment failed for {url}: {e}")
+            logger.warning(f"Embedded event enrichment failed for {url}: {e}")
             return None
+
+    def _fetch_seated_api_events_markdown(self, client: httpx.Client, artist_id: str) -> Optional[str]:
+        """Fetch events directly from Seated's widget API."""
+        api_response = client.get(
+            f"https://cdn.seated.com/api/tour/{artist_id}",
+            params={"include": "tour-events"},
+            headers={"X-Client-Version": "tourtracker"},
+        )
+        api_response.raise_for_status()
+        return self._seated_api_to_markdown(api_response.json())
 
     def _find_seated_artist_id(self, client: httpx.Client, page_url: str, page_html: str) -> Optional[str]:
         """Find Seated's artist id in initial HTML or same-origin Nuxt chunks."""
@@ -177,6 +190,157 @@ class CrawlerService:
                 return unescape(match.group(1))
 
         return None
+
+    def _json_ld_events_to_markdown(self, page_html: str) -> Optional[str]:
+        """Convert embedded schema.org Event JSON-LD into LLM-friendly lines."""
+        events = []
+        scripts = re.findall(
+            r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+            page_html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+        for script in scripts:
+            payload = unescape(script).strip()
+            if not payload:
+                continue
+
+            try:
+                data = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+
+            events.extend(self._collect_json_ld_events(data))
+
+        if not events:
+            return None
+
+        lines = ["Structured event data from page JSON-LD:"]
+        for event in events:
+            name = self._json_ld_text(event.get("name")) or "Event"
+            date = self._json_ld_text(event.get("startDate")) or "Date TBD"
+            location = event.get("location") or {}
+            venue = ""
+            address = ""
+            if isinstance(location, dict):
+                venue = self._json_ld_text(location.get("name"))
+                address = self._json_ld_address(location.get("address"))
+            offers = event.get("offers") or {}
+            ticket_url = self._json_ld_text(offers.get("url")) if isinstance(offers, dict) else ""
+
+            line = f"- {date} | {name}"
+            if venue:
+                line = f"{line} | {venue}"
+            if address:
+                line = f"{line} | {address}"
+            if ticket_url:
+                line = f"{line} | Tickets: {ticket_url}"
+            lines.append(line)
+
+        return "\n".join(lines)
+
+    def _collect_json_ld_events(self, data) -> list[dict]:
+        """Recursively collect schema.org Event-ish objects from JSON-LD."""
+        found = []
+        if isinstance(data, list):
+            for item in data:
+                found.extend(self._collect_json_ld_events(item))
+            return found
+
+        if not isinstance(data, dict):
+            return found
+
+        item_type = data.get("@type")
+        types = item_type if isinstance(item_type, list) else [item_type]
+        if any(isinstance(t, str) and t.lower().endswith("event") for t in types):
+            found.append(data)
+
+        for key in ("@graph", "mainEntity", "itemListElement"):
+            if key in data:
+                found.extend(self._collect_json_ld_events(data[key]))
+
+        return found
+
+    def _json_ld_text(self, value) -> str:
+        """Return a readable scalar from common JSON-LD value shapes."""
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            for key in ("name", "url", "@id"):
+                if value.get(key):
+                    return str(value[key])
+        if isinstance(value, list):
+            return ", ".join(filter(None, (self._json_ld_text(item) for item in value)))
+        return str(value)
+
+    def _json_ld_address(self, value) -> str:
+        """Return a readable address from schema.org address shapes."""
+        if isinstance(value, str):
+            return value
+        if not isinstance(value, dict):
+            return ""
+
+        parts = [
+            value.get("streetAddress"),
+            value.get("addressLocality"),
+            value.get("addressRegion"),
+            value.get("postalCode"),
+            value.get("addressCountry"),
+        ]
+        return ", ".join(str(part) for part in parts if part)
+
+    def diagnose_event_content(self, url: str, markdown: str, extracted_count: int) -> Optional[str]:
+        """Explain likely reasons a successful crawl produced no events."""
+        if extracted_count > 0:
+            return None
+
+        text = (markdown or "").strip()
+        lower_text = text.lower()
+        text_len = len(text)
+
+        bot_patterns = [
+            "access denied",
+            "captcha",
+            "cf-chl",
+            "cloudflare",
+            "enable cookies",
+            "forbidden",
+            "robot",
+            "unusual traffic",
+            "verify you are human",
+        ]
+        if any(pattern in lower_text for pattern in bot_patterns):
+            return "Crawler reached the page, but the content looks like a bot protection or access-denied page."
+
+        no_event_patterns = [
+            "no upcoming events",
+            "no tour dates",
+            "no shows",
+            "nothing scheduled",
+            "check back soon",
+        ]
+        if any(pattern in lower_text for pattern in no_event_patterns):
+            return "Crawler reached the page and it appears to say there are no upcoming dates."
+
+        date_hits = re.findall(
+            r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b",
+            lower_text,
+        )
+        event_words = ("tour", "tickets", "venue", "show", "event", "dates")
+        event_word_hits = sum(1 for word in event_words if word in lower_text)
+
+        if text_len < 500:
+            return "Crawler returned very little page text. The page may be blank, blocked, or rendering tour dates after load."
+
+        if event_word_hits >= 2 and not date_hits:
+            return "Crawler found tour-related text but no date-like content. The listing may be loaded by JavaScript, a ticketing widget, or an unsupported API."
+
+        if not date_hits:
+            return "Crawler fetched readable content, but no date-like text was found for extraction."
+
+        return "Crawler found date-like text, but Gemini extracted zero events. The page may use an unsupported format or the dates may not be for this artist."
 
     def _seated_api_to_markdown(self, data: dict) -> Optional[str]:
         """Convert Seated JSON:API tour events into LLM-friendly markdown."""

@@ -159,6 +159,8 @@
           {% endif %}
           {% if source.consecutive_failures >= 3 %}
             <span class="status-dot error"></span>
+          {% elif source.consecutive_failures > 0 %}
+            <span class="status-dot warning"></span>
           {% elif source.last_success_at %}
             <span class="status-dot success"></span>
           {% else %}
@@ -171,8 +173,13 @@
         <div class="text-xs text-muted mt-sm">
           Mode: {{ source.fetch_mode }}
           {% if source.preferred_crawler %} · Prefers: {{ source.preferred_crawler }}{% endif %}
-          {% if source.consecutive_failures > 0 %} · {{ source.consecutive_failures }} failure(s){% endif %}
+          {% if source.consecutive_failures > 0 %} · {{ source.consecutive_failures }} notice(s){% endif %}
         </div>
+        {% if source.last_error %}
+        <div class="text-xs mt-sm" style="color: {% if source.consecutive_failures >= 3 %}var(--status-error){% else %}var(--status-warning){% endif %};">
+          {{ source.last_error }}
+        </div>
+        {% endif %}
       </div>
       <form method="post" action="/artists/sources/{{ source.id }}/delete"
             onsubmit="return confirm('Remove this source?')">
@@ -211,4 +218,3 @@
   {% endif %}
 </div>
 {% endblock %}
-

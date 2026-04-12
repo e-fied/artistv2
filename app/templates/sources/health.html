@@ -16,7 +16,7 @@
       <div class="stat-value">{{ healthy_sources|length + failing_sources|length }}</div>
     </div>
     <div class="stat-card" style="flex: 1;">
-      <div class="stat-label">Failing Sources</div>
+      <div class="stat-label">Needs Attention</div>
       <div class="stat-value" style="color: {% if failing_sources|length > 0 %}var(--status-error){% else %}var(--status-success){% endif %};">
         {{ failing_sources|length }}
       </div>
@@ -24,13 +24,15 @@
   </div>
 
   {% if failing_sources %}
-  <h3 class="font-semibold mb-md" style="color: var(--status-error);">Failing Sources</h3>
+  <h3 class="font-semibold mb-md" style="color: var(--status-error);">Sources Needing Attention</h3>
   <div class="card-grid mb-xl">
     {% for source in failing_sources %}
     <div class="card">
       <div class="flex items-center justify-between mb-sm">
         <div class="font-semibold">{{ source.artist.name }}</div>
-        <span class="badge badge-error">{{ source.consecutive_failures }} failures</span>
+        <span class="badge {% if source.consecutive_failures >= 3 %}badge-error{% else %}badge-warning{% endif %}">
+          {{ source.consecutive_failures }} notice{{ 's' if source.consecutive_failures != 1 else '' }}
+        </span>
       </div>
       
       <div class="text-sm mb-sm text-tertiary">
@@ -46,7 +48,7 @@
       </div>
 
       {% if source.last_error %}
-      <div class="code-block text-xs" style="color: var(--status-error); white-space: pre-wrap;">
+      <div class="code-block text-xs" style="color: {% if source.consecutive_failures >= 3 %}var(--status-error){% else %}var(--status-warning){% endif %}; white-space: pre-wrap;">
         {{ source.last_error }}
       </div>
       {% endif %}

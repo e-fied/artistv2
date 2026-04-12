@@ -39,7 +39,7 @@
       {% endif %}
     </div>
     <div class="stat-card">
-      <div class="stat-label">Sources Failing</div>
+      <div class="stat-label">Sources Need Attention</div>
       <div class="stat-value" style="color: {% if failing_sources > 0 %}var(--status-error){% else %}var(--text-muted){% endif %};">{{ failing_sources }}</div>
     </div>
     <div class="stat-card">
@@ -96,8 +96,12 @@
             {% endif %}
           {% else %}
             {% if source.consecutive_failures >= 3 %}
-              <span class="badge badge-error" title="{{ source.url or 'Website' }}: {{ source.consecutive_failures }} failures">
+              <span class="badge badge-error" title="{{ source.url or 'Website' }}: {{ source.last_error or (source.consecutive_failures ~ ' notices') }}">
                 Web ✗
+              </span>
+            {% elif source.consecutive_failures > 0 %}
+              <span class="badge badge-warning" title="{{ source.url or 'Website' }}: {{ source.last_error or (source.consecutive_failures ~ ' notice(s)') }}">
+                Web !
               </span>
             {% elif source.last_success_at %}
               <span class="badge badge-success" title="{{ source.url or 'Website' }}: OK">Web ✓</span>

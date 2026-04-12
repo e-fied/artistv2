@@ -291,7 +291,7 @@ def _scan_single_artist(
                     # if w_source.last_content_hash == current_hash: ...
                     
                     extraction = extractor.extract_events(cleaned_md, artist.name)
-                    if extraction:
+                    if extraction is not None:
                         source_result.events_extracted = len(extraction.events)
                         
                         for ev in extraction.events:
@@ -318,17 +318,34 @@ def _scan_single_artist(
                             elif result == "possible":
                                 new_possible += 1
 
-                        w_source.last_success_at = datetime.utcnow()
-                        w_source.consecutive_failures = 0
-                        w_source.last_error = None
                         w_source.content_hash = current_hash
+                        diagnostic = crawler.diagnose_event_content(
+                            w_source.url, cleaned_md, len(extraction.events)
+                        )
+                        if diagnostic:
+                            source_result.fetch_error = diagnostic
+                            w_source.consecutive_failures += 1
+                            w_source.last_error = diagnostic
+                            logger.warning(
+                                f"No events extracted for {w_source.url}: {diagnostic}"
+                            )
+                        else:
+                            w_source.last_success_at = datetime.utcnow()
+                            w_source.consecutive_failures = 0
+                            w_source.last_error = None
                     else:
-                        logger.warning(f"Extracted no events or LLM failed for {w_source.url}")
+                        diagnostic = crawler.diagnose_event_content(
+                            w_source.url, cleaned_md, 0
+                        )
+                        source_result.fetch_error = diagnostic or "Gemini extraction failed"
+                        w_source.last_error = source_result.fetch_error
+                        logger.warning(f"Extracted no events or LLM failed for {w_source.url}: {source_result.fetch_error}")
                         w_source.consecutive_failures += 1
                 else:
                     source_result.fetch_success = False
                     source_result.fetch_error = "Crawler failed to fetch markdown"
                     w_source.consecutive_failures += 1
+                    w_source.last_error = source_result.fetch_error
 
             except Exception as e:
                 source_result.fetch_success = False
