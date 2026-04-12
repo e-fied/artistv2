@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional, Dict, Any
+import re
+from html import unescape
+from typing import Optional
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from firecrawl import FirecrawlApp
@@ -52,7 +55,8 @@ class CrawlerService:
                 markdown = self._fetch_firecrawl(url)
 
             if markdown:
-                return markdown, crawler
+                enriched_markdown = self._append_seated_events(url, markdown)
+                return enriched_markdown, crawler
             
             logger.warning(f"{crawler} failed for {url}. Falling back...")
 
@@ -109,6 +113,99 @@ class CrawlerService:
         except Exception as e:
             logger.error(f"Firecrawl error: {e}")
             return None
+
+    def _append_seated_events(self, url: str, markdown: str) -> str:
+        """Append Seated widget events when a tour page loads dates client-side."""
+        seated_markdown = self._fetch_seated_events_markdown(url)
+        if not seated_markdown:
+            return markdown
+
+        return f"{markdown}\n\n{seated_markdown}"
+
+    def _fetch_seated_events_markdown(self, url: str) -> Optional[str]:
+        """Fetch events directly from Seated's widget API if the page uses it."""
+        try:
+            with httpx.Client(timeout=20.0, follow_redirects=True) as client:
+                page_response = client.get(url)
+                page_response.raise_for_status()
+                page_html = page_response.text
+
+                artist_id = self._find_seated_artist_id(client, url, page_html)
+                if not artist_id:
+                    return None
+
+                api_response = client.get(
+                    f"https://cdn.seated.com/api/tour/{artist_id}",
+                    params={"include": "tour-events"},
+                    headers={"X-Client-Version": "tourtracker"},
+                )
+                api_response.raise_for_status()
+                return self._seated_api_to_markdown(api_response.json())
+        except Exception as e:
+            logger.warning(f"Seated widget enrichment failed for {url}: {e}")
+            return None
+
+    def _find_seated_artist_id(self, client: httpx.Client, page_url: str, page_html: str) -> Optional[str]:
+        """Find Seated's artist id in initial HTML or same-origin Nuxt chunks."""
+        match = re.search(r'data-artist-id=["\']([^"\']+)["\']', page_html)
+        if match:
+            return unescape(match.group(1))
+
+        parsed_url = urlparse(page_url)
+        same_origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        script_paths = set(re.findall(r'(?:src|href)=["\']([^"\']+\.js)["\']', page_html))
+
+        for script_path in script_paths:
+            script_url = urljoin(page_url, unescape(script_path))
+            parsed_script_url = urlparse(script_url)
+            if f"{parsed_script_url.scheme}://{parsed_script_url.netloc}" != same_origin:
+                continue
+
+            try:
+                script_response = client.get(script_url)
+                script_response.raise_for_status()
+            except Exception as e:
+                logger.debug(f"Failed to fetch script while looking for Seated artist id: {script_url}: {e}")
+                continue
+
+            match = re.search(r'data-artist-id["\']?\s*:\s*["\']([^"\']+)["\']', script_response.text)
+            if match:
+                return unescape(match.group(1))
+
+            match = re.search(r'data-artist-id["\']?\s*,\s*["\']([^"\']+)["\']', script_response.text)
+            if match:
+                return unescape(match.group(1))
+
+        return None
+
+    def _seated_api_to_markdown(self, data: dict) -> Optional[str]:
+        """Convert Seated JSON:API tour events into LLM-friendly markdown."""
+        included = data.get("included") or []
+        events = [item for item in included if item.get("type") == "tour-events"]
+        if not events:
+            return None
+
+        artist_name = ((data.get("data") or {}).get("attributes") or {}).get("name", "Artist")
+        lines = [f"Seated widget tour events for {artist_name}:"]
+
+        for event in events:
+            attrs = event.get("attributes") or {}
+            date = attrs.get("starts-at-date-local") or attrs.get("starts-at-short") or "Date TBD"
+            venue = attrs.get("venue-name") or "Venue TBD"
+            address = attrs.get("formatted-address") or ""
+            details = attrs.get("details") or ""
+            ticket_url = f"https://link.seated.com/{event.get('id')}" if event.get("id") else ""
+
+            line = f"- {date} | {venue}"
+            if address:
+                line = f"{line} | {address}"
+            if details:
+                line = f"{line} | {details}"
+            if ticket_url:
+                line = f"{line} | Tickets: {ticket_url}"
+            lines.append(line)
+
+        return "\n".join(lines)
 
     def clean_markdown(self, markdown: str) -> str:
         """Strip links, images, and boilerplate from markdown to save tokens."""
