@@ -24,11 +24,13 @@ def scans_page(request: Request, db: Session = Depends(get_db)):
         .all()
     )
     debug_scan_ids = {scan.id for scan in scans if has_scan_debug(scan.id)}
+    has_running = any(scan.status == "running" for scan in scans)
 
     return request.app.state.templates.TemplateResponse(request=request, name="scans/index.html", context={
             "request": request,
             "scans": scans,
             "debug_scan_ids": debug_scan_ids,
+            "has_running": has_running,
         },
     )
 

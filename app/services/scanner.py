@@ -66,6 +66,7 @@ def scan_all_artists() -> None:
 
         for artist in artists:
             try:
+                _set_scan_progress(db, scan_run.id, f"Scanning {artist.name}")
                 found, confirmed, possible = _scan_single_artist(
                     db, artist, scan_run.id, settings
                 )
@@ -84,6 +85,8 @@ def scan_all_artists() -> None:
         scan_run.completed_at = datetime.utcnow()
         if errors:
             scan_run.error_summary = "; ".join(errors[:5])
+        else:
+            scan_run.error_summary = None
         db.commit()
 
         logger.info(
@@ -119,6 +122,7 @@ def scan_single_artist_manual(artist_id: int) -> dict:
         init_scan_debug(scan_run.id, settings.debug_scan_capture, settings.debug_scan_retention)
 
         try:
+            _set_scan_progress(db, scan_run.id, f"Scanning {artist.name}")
             found, confirmed, possible = _scan_single_artist(
                 db, artist, scan_run.id, settings
             )
@@ -126,6 +130,7 @@ def scan_single_artist_manual(artist_id: int) -> dict:
             scan_run.events_found = found
             scan_run.new_confirmed = confirmed
             scan_run.new_possible = possible
+            scan_run.error_summary = None
         except Exception as e:
             scan_run.status = "failed"
             scan_run.error_summary = str(e)[:500]
@@ -146,6 +151,16 @@ def scan_single_artist_manual(artist_id: int) -> dict:
 
 
 # ── Internal ─────────────────────────────────────────────────────────
+
+def _set_scan_progress(db: Session, scan_run_id: int, message: str) -> None:
+    """Persist a lightweight progress note for the scan history page."""
+    scan_run = db.get(ScanRun, scan_run_id)
+    if not scan_run or scan_run.status != "running":
+        return
+
+    scan_run.error_summary = message[:500]
+    db.commit()
+
 
 def _scan_single_artist(
     db: Session,
@@ -175,6 +190,7 @@ def _scan_single_artist(
     )
 
     if tm_source and settings.ticketmaster_api_key:
+        _set_scan_progress(db, scan_run_id, f"{artist.name}: checking Ticketmaster")
         start_time = time_module.time()
         source_result = ScanSourceResult(
             scan_run_id=scan_run_id,
@@ -234,6 +250,12 @@ def _scan_single_artist(
                     new_confirmed += 1
                 elif result == "possible":
                     new_possible += 1
+
+            _set_scan_progress(
+                db,
+                scan_run_id,
+                f"{artist.name}: Ticketmaster returned {len(unique_events)} candidate events",
+            )
 
             source_result.fetch_success = True
             source_result.events_extracted = len(unique_events)
@@ -315,6 +337,7 @@ def _scan_single_artist(
             )
 
             try:
+                _set_scan_progress(db, scan_run_id, f"{artist.name}: crawling {w_source.url}")
                 markdown, crawler_used = crawler.fetch_markdown(
                     url=w_source.url, preferred_crawler=w_source.preferred_crawler
                 )
@@ -329,10 +352,20 @@ def _scan_single_artist(
                     # Optional enhancement: Skip extraction if content hash hasn't changed since last successful scan
                     # if w_source.last_content_hash == current_hash: ...
                     
+                    _set_scan_progress(
+                        db,
+                        scan_run_id,
+                        f"{artist.name}: sending {len(cleaned_md)} cleaned chars to Gemini",
+                    )
                     extraction = extractor.extract_events(cleaned_md, artist.name)
                     processed_events = []
                     if extraction is not None:
                         source_result.events_extracted = len(extraction.events)
+                        _set_scan_progress(
+                            db,
+                            scan_run_id,
+                            f"{artist.name}: Gemini extracted {source_result.events_extracted} web events",
+                        )
                         
                         for ev in extraction.events:
                             # Map properties

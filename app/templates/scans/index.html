@@ -11,7 +11,8 @@
   </div>
 
   {% if scans %}
-  <div class="table-wrap animate-in stagger-1">
+  <div id="scan-history" class="table-wrap animate-in stagger-1"
+       {% if has_running %}hx-get="/scans/" hx-trigger="every 5s" hx-select="#scan-history" hx-swap="outerHTML"{% endif %}>
     <table>
       <thead>
         <tr>
@@ -104,7 +105,9 @@
         {% if scan.error_summary %}
         <tr>
           <td colspan="9" style="padding: 0 var(--space-md) var(--space-sm);">
-            <div class="text-xs" style="color: var(--status-error);">{{ scan.error_summary }}</div>
+            <div class="text-xs" style="color: {% if scan.status == 'running' %}var(--status-warning){% else %}var(--status-error){% endif %};">
+              {% if scan.status == 'running' %}Progress{% else %}Note{% endif %}: {{ scan.error_summary }}
+            </div>
           </td>
         </tr>
         {% endif %}

@@ -64,7 +64,7 @@ def update_settings(
     settings.debug_scan_retention = debug_scan_retention
 
     save_settings(settings)
-    return RedirectResponse(url="/settings", status_code=303)
+    return RedirectResponse(url="/settings?success=saved", status_code=303)
 
 
 @router.post("/test-telegram")

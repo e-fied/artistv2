@@ -14,6 +14,9 @@
   {% if request.query_params.get('success') == 'telegram_sent' %}
     <div class="toast success mb-md" style="position: static; max-width: none;">✅ Test message sent to Telegram</div>
   {% endif %}
+  {% if request.query_params.get('success') == 'saved' %}
+    <div class="toast success mb-md" style="position: static; max-width: none;">Settings saved</div>
+  {% endif %}
   {% if request.query_params.get('error') == 'telegram_failed' %}
     <div class="toast error mb-md" style="position: static; max-width: none;">❌ Failed to send Telegram message — check your credentials</div>
   {% endif %}
@@ -48,9 +51,11 @@
 
       <!-- Test Telegram -->
       <div class="mt-md">
-        <form method="post" action="/settings/test-telegram" style="display: inline;">
-          <button type="submit" class="btn btn-secondary btn-sm">Send Test Telegram</button>
-        </form>
+        <button type="submit" class="btn btn-secondary btn-sm"
+                formaction="/settings/test-telegram"
+                formmethod="post">
+          Send Test Telegram
+        </button>
       </div>
     </div>
 
