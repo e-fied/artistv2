@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Scan Debug — Tour Tracker{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+  <div class="page-header">
+    <div>
+      <h2>Scan Debug</h2>
+      <p class="subtitle">
+        Scan #{{ scan.id }} ·
+        {% if scan.artist %}{{ scan.artist.name }}{% else %}All artists{% endif %} ·
+        {{ scan.started_at|localtime }}
+      </p>
+    </div>
+    <a href="/scans" class="btn btn-secondary">Back to Scan History</a>
+  </div>
+
+  {% if not debug_data %}
+  <div class="empty-state">
+    <p>No debug artifact was captured for this scan. Enable Scan Debugging in Settings before running a scan.</p>
+  </div>
+  {% else %}
+    {% for source in debug_data.sources %}
+    <div class="card mb-lg">
+      <div class="card-header">
+        <h3 class="card-title">{{ source.source_type }}{% if source.artist %} · {{ source.artist }}{% endif %}</h3>
+        {% if source.crawler_used %}<span class="badge badge-neutral">{{ source.crawler_used }}</span>{% endif %}
+        {% if source.mode %}<span class="badge badge-neutral">{{ source.mode }}</span>{% endif %}
+      </div>
+
+      {% if source.url %}
+        <div class="text-xs text-muted font-mono mb-sm" style="word-break: break-all;">{{ source.url }}</div>
+      {% endif %}
+      {% if source.error %}
+        <div class="code-block text-xs mb-md" style="color: var(--status-error); white-space: pre-wrap;">{{ source.error }}</div>
+      {% endif %}
+      {% if source.diagnostic %}
+        <div class="code-block text-xs mb-md" style="color: var(--status-warning); white-space: pre-wrap;">{{ source.diagnostic }}</div>
+      {% endif %}
+
+      {% if source.search %}
+      <details class="mb-md" open>
+        <summary class="font-semibold">Ticketmaster Search</summary>
+        <pre class="code-block text-xs mt-sm">{{ source.search | tojson(indent=2) }}</pre>
+      </details>
+      {% endif %}
+
+      {% if source.events %}
+      <details class="mb-md" open>
+        <summary class="font-semibold">Events Found ({{ source.events|length }})</summary>
+        <div class="table-wrap mt-sm">
+          <table>
+            <thead>
+              <tr>
+                <th>Result</th>
+                <th>Event</th>
+                <th>Date</th>
+                <th>Venue</th>
+                <th>City</th>
+                <th>Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for event in source.events %}
+              <tr>
+                <td><span class="badge badge-neutral">{{ event.process_result or 'raw' }}</span></td>
+                <td>{{ event.event_name }}</td>
+                <td class="font-mono">{{ event.date or event.event_date or 'TBD' }}</td>
+                <td>{{ event.venue }}</td>
+                <td>{{ event.city }}{% if event.region %}, {{ event.region }}{% endif %}</td>
+                <td class="text-xs text-muted">{{ event.evidence_text }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% endif %}
+
+      {% if source.llm %}
+      <details class="mb-md">
+        <summary class="font-semibold">LLM Request</summary>
+        <div class="text-xs text-muted mt-sm">
+          Model: <span class="font-mono">{{ source.llm.model }}</span> ·
+          Temperature: <span class="font-mono">{{ source.llm.temperature }}</span> ·
+          Input chars: <span class="font-mono">{{ source.llm.input_markdown_chars }}</span>
+        </div>
+        <pre class="code-block text-xs mt-sm" style="white-space: pre-wrap;">{{ source.llm.prompt }}</pre>
+      </details>
+
+      <details class="mb-md">
+        <summary class="font-semibold">LLM Raw Response</summary>
+        <pre class="code-block text-xs mt-sm" style="white-space: pre-wrap;">{{ source.llm.raw_response_text or '' }}</pre>
+      </details>
+
+      <details class="mb-md">
+        <summary class="font-semibold">LLM Parsed Response</summary>
+        <pre class="code-block text-xs mt-sm">{{ source.llm.parsed_response | tojson(indent=2) }}</pre>
+      </details>
+      {% endif %}
+
+      {% if source.cleaned_markdown_sample %}
+      <details>
+        <summary class="font-semibold">Cleaned Crawl Sample</summary>
+        <div class="text-xs text-muted mt-sm">
+          Markdown chars: {{ source.markdown_chars }} · Cleaned chars: {{ source.cleaned_markdown_chars }}
+        </div>
+        <pre class="code-block text-xs mt-sm" style="white-space: pre-wrap;">{{ source.cleaned_markdown_sample }}</pre>
+      </details>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}

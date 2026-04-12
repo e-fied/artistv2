@@ -25,6 +25,7 @@ class ExtractorService:
                 self.client = genai.Client(api_key=settings.gemini_api_key)
             except Exception as e:
                 logger.error(f"Failed to initialize Gemini: {e}")
+        self.last_debug: dict = {}
 
     def extract_events(self, markdown: str, artist_name: str) -> Optional[ExtractionResult]:
         """Parse markdown to extract upcoming events for the given artist."""
@@ -32,6 +33,7 @@ class ExtractorService:
             logger.error("Gemini API key not configured")
             return None
 
+        model = "gemini-2.5-flash"
         prompt = f"""
 You are an expert event data extractor.
 Review the following text from an artist's tour website and extract all UPCOMING events.
@@ -50,9 +52,16 @@ Website Content:
 ----------------
 {markdown}
 """
+        self.last_debug = {
+            "model": model,
+            "temperature": 0.1,
+            "response_mime_type": "application/json",
+            "prompt": prompt,
+            "input_markdown_chars": len(markdown),
+        }
         try:
             response = self.client.models.generate_content(
-                model='gemini-2.5-flash',
+                model=model,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
@@ -60,14 +69,18 @@ Website Content:
                     temperature=0.1,
                 ),
             )
+            self.last_debug["raw_response_text"] = getattr(response, "text", None)
             
             # The structured output is available in response.parsed
             if hasattr(response, 'parsed') and response.parsed:
+                self.last_debug["parsed_response"] = response.parsed.model_dump()
                 return response.parsed
             else:
+                self.last_debug["parsed_response"] = None
                 logger.error("Gemini returned success but no parsed structured output.")
                 return None
                 
         except Exception as e:
+            self.last_debug["error"] = str(e)
             logger.error(f"Gemini extraction failed: {e}")
             return None

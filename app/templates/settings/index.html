@@ -123,6 +123,30 @@
       </div>
     </div>
 
+    <!-- Debugging -->
+    <div class="card mb-lg">
+      <div class="card-header">
+        <h3 class="card-title">Scan Debugging</h3>
+        <span class="badge badge-warning">testing only</span>
+      </div>
+      <p class="text-xs text-muted mb-md">When enabled, scan history stores prompts, model responses, cleaned crawl text samples, parsed events, and Ticketmaster candidates in <code class="font-mono">data/debug</code>. Turn it off after testing.</p>
+
+      <div class="form-group">
+        <label class="form-check">
+          <input type="checkbox" name="debug_scan_capture" value="true"
+                 {% if settings.debug_scan_capture %}checked{% endif %}>
+          <span class="text-sm">Capture scan debug artifacts</span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="debug_scan_retention">Debug scans to keep</label>
+        <input type="number" id="debug_scan_retention" name="debug_scan_retention"
+               class="form-input" min="1" max="200"
+               value="{{ settings.debug_scan_retention }}"
+               style="max-width: 200px;">
+      </div>
+    </div>
+
     <div class="form-actions">
       <button type="submit" class="btn btn-primary btn-lg">Save Settings</button>
     </div>

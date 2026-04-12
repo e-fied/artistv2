@@ -47,6 +47,8 @@ def update_settings(
     daily_digest_enabled: bool = Form(False),
     daily_digest_time: str = Form("21:00"),
     crawl4ai_base_url: str = Form("http://crawl4ai:11235"),
+    debug_scan_capture: bool = Form(False),
+    debug_scan_retention: int = Form(25),
 ):
     """Update non-secret settings."""
     settings = load_settings()
@@ -58,6 +60,8 @@ def update_settings(
     settings.daily_digest_enabled = daily_digest_enabled
     settings.daily_digest_time = daily_digest_time
     settings.crawl4ai_base_url = crawl4ai_base_url
+    settings.debug_scan_capture = debug_scan_capture
+    settings.debug_scan_retention = debug_scan_retention
 
     save_settings(settings)
     return RedirectResponse(url="/settings", status_code=303)

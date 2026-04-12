@@ -34,6 +34,7 @@ from app.services.notifier import (
     send_telegram,
 )
 from app.services.ticketmaster import TicketmasterClient
+from app.services.debug_capture import append_source_debug, init_scan_debug
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ def scan_all_artists() -> None:
         )
         db.add(scan_run)
         db.commit()
+        init_scan_debug(scan_run.id, settings.debug_scan_capture, settings.debug_scan_retention)
 
         total_found = 0
         total_confirmed = 0
@@ -114,6 +116,7 @@ def scan_single_artist_manual(artist_id: int) -> dict:
         )
         db.add(scan_run)
         db.commit()
+        init_scan_debug(scan_run.id, settings.debug_scan_capture, settings.debug_scan_retention)
 
         try:
             found, confirmed, possible = _scan_single_artist(
@@ -220,10 +223,12 @@ def _scan_single_artist(
                 unique_events.append(ev)
 
             # Process each event
+            processed_events = []
             for ev in unique_events:
                 result = _process_event(
                     db, artist, ev, profiles, source_type="ticketmaster"
                 )
+                processed_events.append({**ev, "process_result": result})
                 found_total += 1
                 if result == "confirmed":
                     new_confirmed += 1
@@ -235,6 +240,30 @@ def _scan_single_artist(
             tm_source.last_success_at = datetime.utcnow()
             tm_source.consecutive_failures = 0
             tm_source.last_error = None
+            append_source_debug(
+                scan_run_id,
+                settings.debug_scan_capture,
+                {
+                    "artist": artist.name,
+                    "source_type": "ticketmaster",
+                    "mode": "ticketmaster",
+                    "profiles": [
+                        {
+                            "name": profile.name,
+                            "latlong": f"{profile.latitude},{profile.longitude}",
+                            "radius_km": profile.radius_km,
+                            "country_code": profile.country_code,
+                        }
+                        for profile in profiles
+                    ],
+                    "search": {
+                        "attraction_id": artist.ticketmaster_attraction_id,
+                        "keyword_fallback": None if artist.ticketmaster_attraction_id else artist.name,
+                    },
+                    "events_returned": len(unique_events),
+                    "events": processed_events,
+                },
+            )
 
         except Exception as e:
             source_result.fetch_success = False
@@ -242,6 +271,16 @@ def _scan_single_artist(
             tm_source.consecutive_failures += 1
             tm_source.last_error = str(e)[:500]
             logger.error(f"Ticketmaster scan for {artist.name} failed: {e}")
+            append_source_debug(
+                scan_run_id,
+                settings.debug_scan_capture,
+                {
+                    "artist": artist.name,
+                    "source_type": "ticketmaster",
+                    "mode": "ticketmaster",
+                    "error": str(e),
+                },
+            )
 
         source_result.fetch_duration_seconds = time_module.time() - start_time
         tm_source.last_checked_at = datetime.utcnow()
@@ -291,6 +330,7 @@ def _scan_single_artist(
                     # if w_source.last_content_hash == current_hash: ...
                     
                     extraction = extractor.extract_events(cleaned_md, artist.name)
+                    processed_events = []
                     if extraction is not None:
                         source_result.events_extracted = len(extraction.events)
                         
@@ -312,6 +352,11 @@ def _scan_single_artist(
                             result = _process_event(
                                 db, artist, event_data, profiles, source_type=w_source.source_type
                             )
+                            processed_events.append({
+                                **event_data,
+                                "confidence": ev.confidence.value if hasattr(ev.confidence, "value") else ev.confidence,
+                                "process_result": result,
+                            })
                             found_total += 1
                             if result == "confirmed":
                                 new_confirmed += 1
@@ -341,11 +386,39 @@ def _scan_single_artist(
                         w_source.last_error = source_result.fetch_error
                         logger.warning(f"Extracted no events or LLM failed for {w_source.url}: {source_result.fetch_error}")
                         w_source.consecutive_failures += 1
+
+                    append_source_debug(
+                        scan_run_id,
+                        settings.debug_scan_capture,
+                        {
+                            "artist": artist.name,
+                            "source_type": w_source.source_type,
+                            "url": w_source.url,
+                            "crawler_used": crawler_used,
+                            "markdown_chars": len(markdown),
+                            "cleaned_markdown_chars": len(cleaned_md),
+                            "cleaned_markdown_sample": cleaned_md[:5000],
+                            "llm": extractor.last_debug,
+                            "events_extracted": source_result.events_extracted,
+                            "events": processed_events,
+                            "diagnostic": source_result.fetch_error,
+                        },
+                    )
                 else:
                     source_result.fetch_success = False
                     source_result.fetch_error = "Crawler failed to fetch markdown"
                     w_source.consecutive_failures += 1
                     w_source.last_error = source_result.fetch_error
+                    append_source_debug(
+                        scan_run_id,
+                        settings.debug_scan_capture,
+                        {
+                            "artist": artist.name,
+                            "source_type": w_source.source_type,
+                            "url": w_source.url,
+                            "error": source_result.fetch_error,
+                        },
+                    )
 
             except Exception as e:
                 source_result.fetch_success = False
@@ -353,6 +426,16 @@ def _scan_single_artist(
                 w_source.consecutive_failures += 1
                 w_source.last_error = str(e)[:500]
                 logger.error(f"Web scan for {w_source.url} failed: {e}")
+                append_source_debug(
+                    scan_run_id,
+                    settings.debug_scan_capture,
+                    {
+                        "artist": artist.name,
+                        "source_type": w_source.source_type,
+                        "url": w_source.url,
+                        "error": str(e),
+                    },
+                )
 
             source_result.fetch_duration_seconds = time_module.time() - start_time
             w_source.last_checked_at = datetime.utcnow()

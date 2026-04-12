@@ -415,12 +415,31 @@ a:hover {
   display: none;
 }
 
+.btn-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
 .htmx-request .htmx-indicator {
   display: inline-block;
 }
 
 .htmx-request .btn-label {
   display: none;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 

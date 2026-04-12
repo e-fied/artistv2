@@ -71,6 +71,9 @@
                 {% if fail > 0 %}<span style="color: var(--status-error);"> {{ fail }}✗</span>{% endif %}
               </span>
             {% endif %}
+            {% if scan.id in debug_scan_ids %}
+              <a href="/scans/{{ scan.id }}/debug" class="btn btn-ghost btn-sm" style="padding: 2px 6px;">Debug</a>
+            {% endif %}
           </td>
         </tr>
         {% if scan.source_results %}

@@ -21,6 +21,7 @@ DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/app/data"))
 SETTINGS_PATH = DATA_DIR / "settings.json"
 DB_PATH = DATA_DIR / "tourtracker.db"
 LOG_DIR = DATA_DIR / "logs"
+DEBUG_DIR = DATA_DIR / "debug"
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +54,16 @@ class AppSettings(BaseModel):
     notify_review_summary: bool = Field(default=True, description="Telegram summary for possible events")
     daily_digest_enabled: bool = Field(default=False)
     daily_digest_time: str = Field(default="21:00")
+
+    # --- Debug capture ---
+    debug_scan_capture: bool = Field(
+        default=False,
+        description="Store scan debug artifacts with prompts, responses, and extracted events",
+    )
+    debug_scan_retention: int = Field(
+        default=25,
+        description="Number of scan debug artifacts to keep",
+    )
 
     # --- Internal ---
     secret_fields: List[str] = Field(
