@@ -47,7 +47,7 @@
       <div class="stat-value">{{ scan_interval_hours }}h</div>
       <div class="stat-detail">
         {% if last_scan %}
-          Last: {{ last_scan.started_at.strftime('%b %d, %I:%M %p') }}
+          Last: {{ last_scan.started_at|localtime }}
         {% else %}
           No scans yet
         {% endif %}
@@ -114,7 +114,7 @@
 
       <div class="text-xs text-muted font-mono mt-sm">
         {% if item.last_checked %}
-          Checked {{ item.last_checked.strftime('%b %d, %I:%M %p') }}
+          Checked {{ item.last_checked|localtime }}
         {% else %}
           Not checked yet
         {% endif %}

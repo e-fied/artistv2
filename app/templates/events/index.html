@@ -35,6 +35,15 @@
         <a href="/events" class="btn btn-ghost btn-sm">Clear</a>
       {% endif %}
     </form>
+    {% if events %}
+    <form method="post" action="/events/delete-filtered" class="mt-sm"
+          onsubmit="return confirm('Delete the currently filtered events? This lets scans rediscover them for testing.')">
+      <input type="hidden" name="status" value="{{ filter_status }}">
+      <input type="hidden" name="artist_id" value="{{ filter_artist_id }}">
+      <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-error);">Delete Matching Events</button>
+      <span class="text-xs text-muted">Use this for testing rediscovery. Existing events are deduped until deleted.</span>
+    </form>
+    {% endif %}
   </div>
 
   {% if events %}
@@ -48,8 +57,10 @@
           <th>Venue</th>
           <th>Location</th>
           <th>Date</th>
+          <th>Seen</th>
           <th>Match</th>
           <th>Source</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -79,6 +90,10 @@
             <span class="font-mono text-sm">{{ event.event_date.strftime('%Y-%m-%d') if event.event_date else 'TBD' }}</span>
           </td>
           <td>
+            <div class="font-mono text-xs">{{ event.first_seen_at|localtime('%b %d, %I:%M %p') }}</div>
+            <div class="text-xs text-muted">updated {{ event.updated_at|localtime('%b %d, %I:%M %p') }}</div>
+          </td>
+          <td>
             {% if event.match_reason %}
               <span class="text-xs text-muted">{{ event.match_reason }}</span>
             {% endif %}
@@ -88,6 +103,12 @@
             {% if event.ticket_url %}
               <a href="{{ event.ticket_url }}" target="_blank" class="btn btn-ghost btn-sm" style="padding: 2px 4px;">🎟</a>
             {% endif %}
+          </td>
+          <td>
+            <form method="post" action="/events/{{ event.id }}/delete"
+                  onsubmit="return confirm('Delete this event so a scan can rediscover it?')">
+              <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-error);">Delete</button>
+            </form>
           </td>
         </tr>
         {% endfor %}

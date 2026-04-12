@@ -99,7 +99,7 @@
       <div class="sidebar-footer">
         <div class="text-xs text-muted font-mono">
           {% if last_scan is defined and last_scan %}
-            Last scan: {{ last_scan.started_at.strftime('%b %d, %I:%M %p') if last_scan.started_at else 'Never' }}
+            Last scan: {{ last_scan.started_at|localtime if last_scan.started_at else 'Never' }}
           {% else %}
             No scans yet
           {% endif %}

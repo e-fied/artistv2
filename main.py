@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from datetime import timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -88,6 +90,25 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 TEMPLATE_DIR = Path(__file__).parent / "app" / "templates"
 TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+
+
+def localtime(value, fmt: str = "%b %d, %I:%M %p") -> str:
+    """Format UTC database timestamps in the configured app timezone."""
+    if not value:
+        return "Never"
+
+    settings = load_settings()
+    try:
+        tz = ZoneInfo(settings.timezone)
+    except ZoneInfoNotFoundError:
+        tz = ZoneInfo("America/Vancouver")
+
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(tz).strftime(fmt)
+
+
+templates.env.filters["localtime"] = localtime
 app.state.templates = templates
 
 # ---------------------------------------------------------------------------

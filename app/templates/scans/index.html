@@ -47,13 +47,14 @@
             {% endif %}
           </td>
           <td>
-            <span class="font-mono text-xs">{{ scan.started_at.strftime('%b %d, %I:%M %p') }}</span>
+            <span class="font-mono text-xs">{{ scan.started_at|localtime }}</span>
           </td>
           <td>
             {% if scan.completed_at and scan.started_at %}
               <span class="font-mono text-xs">
                 {{ ((scan.completed_at - scan.started_at).total_seconds())|int }}s
               </span>
+              <div class="text-xs text-muted">done {{ scan.completed_at|localtime }}</div>
             {% else %}
               <span class="text-muted">—</span>
             {% endif %}
@@ -73,18 +74,29 @@
           </td>
         </tr>
         {% if scan.source_results %}
-          {% set source_notices = scan.source_results|selectattr('fetch_error')|list %}
-          {% if source_notices %}
           <tr>
             <td colspan="9" style="padding: 0 var(--space-md) var(--space-sm);">
-              {% for source in source_notices %}
-              <div class="text-xs" style="color: {% if source.fetch_success %}var(--status-warning){% else %}var(--status-error){% endif %};">
-                {{ source.source_type }}{% if source.fetch_mode_used %} via {{ source.fetch_mode_used }}{% endif %}: {{ source.fetch_error }}
+              <div class="text-xs text-muted" style="display: grid; gap: 4px;">
+                {% for source in scan.source_results %}
+                  <div>
+                    <span class="badge {% if source.fetch_success %}badge-success{% else %}badge-error{% endif %}">
+                      {{ source.source_type }}
+                    </span>
+                    <span class="font-mono">
+                      mode={{ source.fetch_mode_used or 'n/a' }}
+                      extracted={{ source.events_extracted }}
+                      duration={{ '%.1f'|format(source.fetch_duration_seconds or 0) }}s
+                    </span>
+                    {% if source.fetch_error %}
+                      <span style="color: {% if source.fetch_success %}var(--status-warning){% else %}var(--status-error){% endif %};">
+                        {{ source.fetch_error }}
+                      </span>
+                    {% endif %}
+                  </div>
+                {% endfor %}
               </div>
-              {% endfor %}
             </td>
           </tr>
-          {% endif %}
         {% endif %}
         {% if scan.error_summary %}
         <tr>

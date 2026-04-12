@@ -45,6 +45,35 @@ def events_page(
     )
 
 
+@router.post("/events/{event_id}/delete")
+def delete_event(event_id: int, db: Session = Depends(get_db)):
+    """Delete one event so a future scan can rediscover it."""
+    event = db.query(Event).filter(Event.id == event_id).first()
+    if event:
+        db.delete(event)
+        db.commit()
+    return RedirectResponse(url="/events", status_code=303)
+
+
+@router.post("/events/delete-filtered")
+def delete_filtered_events(
+    db: Session = Depends(get_db),
+    status: str = Form(""),
+    artist_id: int = Form(0),
+):
+    """Delete events matching the current filter for testing scan rediscovery."""
+    query = db.query(Event)
+    if status:
+        query = query.filter(Event.status == status)
+    if artist_id:
+        query = query.filter(Event.artist_id == artist_id)
+
+    for event in query.all():
+        db.delete(event)
+    db.commit()
+    return RedirectResponse(url="/events", status_code=303)
+
+
 # ── Review Inbox ───────────────────────────────────────────────────────────
 
 @router.get("/review")

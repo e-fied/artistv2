@@ -18,6 +18,7 @@ env/
 Thumbs.db
 
 # App data (runtime)
+/data/
 /app/data/
 *.db
 *.db-journal
