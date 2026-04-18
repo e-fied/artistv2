@@ -242,6 +242,10 @@ class CrawlerService:
 
         comedian_id = self._find_punchup_comedian_id(page_url, page_html)
         if not comedian_id:
+            comedian_id = self._refetch_punchup_comedian_id(client, page_url)
+        if not comedian_id:
+            comedian_id = self._discover_punchup_comedian_id_from_nearby_shows(client, page_url)
+        if not comedian_id:
             return None
 
         start_datetime = (
@@ -263,6 +267,103 @@ class CrawlerService:
         )
         api_response.raise_for_status()
         return self._punchup_api_to_markdown(api_response.json(), page_url, comedian_id)
+
+    def _refetch_punchup_comedian_id(self, client: httpx.Client, page_url: str) -> Optional[str]:
+        """Retry Punchup page data because its cached shell can omit artist details."""
+        for _ in range(3):
+            try:
+                page_response = client.get(
+                    page_url,
+                    headers={
+                        "Accept": "*/*",
+                        "Cache-Control": "no-cache",
+                        "Pragma": "no-cache",
+                    },
+                )
+                page_response.raise_for_status()
+            except Exception as e:
+                logger.debug(f"Punchup comedian id retry failed for {page_url}: {e}")
+                continue
+
+            comedian_id = self._find_punchup_comedian_id(page_url, page_response.text)
+            if comedian_id:
+                return comedian_id
+
+        return None
+
+    def _discover_punchup_comedian_id_from_nearby_shows(
+        self,
+        client: httpx.Client,
+        page_url: str,
+    ) -> Optional[str]:
+        """Resolve a Punchup slug by searching public nearby show API results."""
+        slug = urlparse(page_url).path.strip("/").split("/", 1)[0]
+        if not slug:
+            return None
+
+        start_datetime = (
+            datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+        discovery_locations = [
+            ("87101", "US"),  # Albuquerque
+            ("85001", "US"),  # Phoenix
+            ("90001", "US"),  # Los Angeles
+            ("80202", "US"),  # Denver
+            ("60601", "US"),  # Chicago
+            ("10001", "US"),  # New York
+            ("98101", "US"),  # Seattle
+            ("V6B", "CA"),    # Vancouver
+            ("M5V", "CA"),    # Toronto
+        ]
+
+        for postal_code, country_code in discovery_locations:
+            try:
+                api_response = client.get(
+                    "https://punchup.live/api/shows",
+                    params={
+                        "postalCode": postal_code,
+                        "countryCode": country_code,
+                        "radius": "500",
+                        "startDatetime": start_datetime,
+                    },
+                    headers={
+                        "Accept": "application/json",
+                        "X-Client-Version": "tourtracker",
+                    },
+                )
+                api_response.raise_for_status()
+            except Exception as e:
+                logger.debug(f"Punchup nearby show discovery failed for {postal_code}: {e}")
+                continue
+
+            comedian_id = self._find_punchup_comedian_id_in_shows(api_response.json(), slug)
+            if comedian_id:
+                return comedian_id
+
+        return None
+
+    def _find_punchup_comedian_id_in_shows(self, data, slug: str) -> Optional[str]:
+        """Find a Punchup comedian id matching a slug in show API rows."""
+        if not isinstance(data, list):
+            return None
+
+        for show in data:
+            if not isinstance(show, dict):
+                continue
+
+            comedian = show.get("comedian")
+            if isinstance(comedian, dict) and comedian.get("slug") == slug:
+                return self._punchup_text(comedian.get("id") or show.get("comedian_id")) or None
+
+            for entry in show.get("show_comedians") or []:
+                if not isinstance(entry, dict) or entry.get("slug") != slug:
+                    continue
+                return self._punchup_text(entry.get("id") or show.get("comedian_id")) or None
+
+        return None
 
     def _find_punchup_comedian_id(self, page_url: str, page_html: str) -> Optional[str]:
         """Find Punchup's comedian id in initial Next.js HTML/RSC data."""

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import httpx
+
 from app.config import AppSettings
 from app.services.crawler import CrawlerService
 
@@ -55,6 +57,94 @@ def test_fetch_markdown_enriches_blank_crawl4ai_result():
 
     assert markdown == "Punchup API tour events"
     assert crawler_used == "crawl4ai"
+
+
+def test_punchup_api_refetches_missing_comedian_id():
+    crawler = CrawlerService(AppSettings())
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/timmynobrakes/tour":
+            return httpx.Response(
+                200,
+                text=(
+                    'self.__next_f.push(["$","$L1",null,'
+                    r'{\"comedian\":{\"id\":\"903698e7-3646-4662-9337-b0f435f5ab2e\",'
+                    r'\"slug\":\"timmynobrakes\",\"display_name\":\"Timmy No Brakes\"}}])'
+                ),
+            )
+        if request.url.path == "/api/shows":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": "visible-show",
+                        "datetime": "2026-04-24T19:00:00",
+                        "venue": "Kiva Auditorium",
+                        "location": "Albuquerque, NM",
+                        "comedian": {"display_name": "Timmy No Brakes"},
+                    }
+                ],
+            )
+        return httpx.Response(404)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    markdown = crawler._fetch_punchup_api_events_markdown(
+        client,
+        "https://punchup.live/timmynobrakes/tour",
+        "<html>No comedian id in this shell</html>",
+    )
+
+    assert markdown is not None
+    assert "Punchup API tour events for Timmy No Brakes" in markdown
+    assert "Kiva Auditorium" in markdown
+
+
+def test_punchup_api_discovers_comedian_id_from_nearby_shows():
+    crawler = CrawlerService(AppSettings())
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/timmynobrakes/tour":
+            return httpx.Response(200, text="<html>No comedian id in this shell</html>")
+        if request.url.path == "/api/shows" and "comedianId" not in request.url.params:
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": "nearby-show",
+                        "comedian_id": "903698e7-3646-4662-9337-b0f435f5ab2e",
+                        "comedian": {
+                            "id": "903698e7-3646-4662-9337-b0f435f5ab2e",
+                            "slug": "timmynobrakes",
+                            "display_name": "Timmy No Brakes",
+                        },
+                    }
+                ],
+            )
+        if request.url.path == "/api/shows" and request.url.params.get("comedianId"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": "visible-show",
+                        "datetime": "2026-04-24T19:00:00",
+                        "venue": "Kiva Auditorium",
+                        "location": "Albuquerque, NM",
+                        "comedian": {"display_name": "Timmy No Brakes"},
+                    }
+                ],
+            )
+        return httpx.Response(404)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    markdown = crawler._fetch_punchup_api_events_markdown(
+        client,
+        "https://punchup.live/timmynobrakes/tour",
+        "<html>No comedian id in this shell</html>",
+    )
+
+    assert markdown is not None
+    assert "Punchup API tour events for Timmy No Brakes" in markdown
+    assert "Kiva Auditorium" in markdown
 
 
 def test_punchup_api_to_markdown_includes_visible_shows_only():
