@@ -134,19 +134,28 @@ class CrawlerService:
 
                 sections = []
 
-                json_ld_markdown = self._json_ld_events_to_markdown(page_html)
-                if json_ld_markdown:
-                    sections.append(json_ld_markdown)
+                try:
+                    json_ld_markdown = self._json_ld_events_to_markdown(page_html)
+                    if json_ld_markdown:
+                        sections.append(json_ld_markdown)
+                except Exception as e:
+                    logger.debug(f"JSON-LD event enrichment failed for {url}: {e}")
 
-                artist_id = self._find_seated_artist_id(client, url, page_html)
-                if artist_id:
-                    seated_markdown = self._fetch_seated_api_events_markdown(client, artist_id)
-                    if seated_markdown:
-                        sections.append(seated_markdown)
+                try:
+                    artist_id = self._find_seated_artist_id(client, url, page_html)
+                    if artist_id:
+                        seated_markdown = self._fetch_seated_api_events_markdown(client, artist_id)
+                        if seated_markdown:
+                            sections.append(seated_markdown)
+                except Exception as e:
+                    logger.debug(f"Seated event enrichment failed for {url}: {e}")
 
-                punchup_markdown = self._fetch_punchup_api_events_markdown(client, url, page_html)
-                if punchup_markdown:
-                    sections.append(punchup_markdown)
+                try:
+                    punchup_markdown = self._fetch_punchup_api_events_markdown(client, url, page_html)
+                    if punchup_markdown:
+                        sections.append(punchup_markdown)
+                except Exception as e:
+                    logger.debug(f"Punchup event enrichment failed for {url}: {e}")
 
                 return "\n\n".join(sections) if sections else None
         except Exception as e:
