@@ -12,6 +12,21 @@
 **Production host:** Unraid server (Docker Compose deployment)
 **Access URL:** `http://nas.local:5001`
 
+### Current State / Recent Context (April 2026)
+
+The app has recently been tuned for debugging crawl failures and dynamic tour pages. A new Codex chat should assume these features exist unless the code says otherwise:
+
+- **Seated widget fallback is implemented.** Adam Ray's site exposed tour dates through `https://cdn.seated.com/api/tour/{uuid}?include=tour-events`. `CrawlerService` now detects Seated widget/Nuxt references, resolves the artist/tour id, fetches the Seated JSON:API endpoint, and appends those events to the crawl markdown before Gemini extraction.
+- **Crawler diagnostics are implemented.** If a page crawls successfully but no events are extracted, the crawler diagnoses likely causes such as very little page text, bot blocking, blank pages, JSON-LD-only events, or dates rendered after load.
+- **Opt-in scan debug artifacts are implemented.** Settings → Scan Debugging can capture prompts, Gemini raw/parsed responses, cleaned crawl samples, Ticketmaster candidates, and processed events to `data/debug/scan_{scan_run_id}.json`.
+- **Scan History shows live progress.** Running scans update a progress message such as "checking Ticketmaster", "crawling URL", or "sending cleaned chars to Gemini", and the Scan History table auto-refreshes while scans are running.
+- **Source Health can link to debug artifacts.** Failing sources show `Latest Debug` when a debug artifact exists for their latest scan result. If none exists, enable Scan Debugging and force retry.
+- **Source Health Telegram alerts are implemented.** Settings → Notifications has `Notify on source health problems`; when enabled, crawler/API warnings are sent to Telegram with artist, source type, URL, notice count, and warning text.
+- **Timezone display is Vancouver-local.** Templates use the `localtime` Jinja filter from `main.py`; stored DB timestamps are UTC-ish/naive, displayed in `America/Vancouver` by default.
+- **Location lat/lon can be inferred for known cities.** Location forms can geocode common city names/fallback known cities such as Denver, so the user does not have to manually know latitude/longitude.
+- **Sidebar links use trailing slashes.** Routes mounted at prefixes like `/scans`, `/locations`, `/logs`, `/settings` define `@router.get("/")`; nav links should use `/scans/`, `/locations/`, `/logs/`, `/settings/` to avoid HTMX boosted redirect weirdness.
+- **Recent relevant commits:** `c1716ec Notify source health problems`, `22d73f6 Fix settings save and scan progress`, `a71f6b0 Add opt-in scan debug artifacts`, `b62d0f8 Improve scan debugging and location entry`, `a4bc5e6 Add crawler diagnostics for empty tour pages`, `aaaf1a6 Add Seated widget tour fallback`.
+
 ---
 
 ## 2. Tech Stack
@@ -66,6 +81,7 @@ artistv2/
 │   │   ├── __init__.py
 │   │   ├── scanner.py          # Main scan orchestrator: scan_all_artists(), _scan_single_artist()
 │   │   ├── crawler.py          # CrawlerService: Crawl4AI → Firecrawl fallback, markdown cleaning
+│   │   ├── debug_capture.py    # Opt-in JSON scan debug artifacts under data/debug/
 │   │   ├── extractor.py        # ExtractorService: Gemini structured extraction from markdown
 │   │   ├── autofind.py         # Auto-discover official tour page via Gemini + Google Search grounding
 │   │   ├── dedup.py            # make_dedup_key(), upsert_event() — SHA-256 based deduplication
@@ -103,6 +119,7 @@ artistv2/
 ├── data/                       # Runtime data (git-ignored, Docker volume-mounted)
 │   ├── tourtracker.db          # SQLite database
 │   ├── settings.json           # Non-secret settings persisted from UI
+│   ├── debug/                  # Opt-in scan debug artifacts (git-ignored)
 │   └── logs/
 │       └── app.log             # Application log file
 │
@@ -127,6 +144,7 @@ APScheduler (every N hours)
        │    │
        │    ├─▶ [Web Sources] (official_website, manual_url)
        │    │    ├─ CrawlerService.fetch_markdown() → tries Crawl4AI sidecar, falls back to Firecrawl
+       │    │    ├─ CrawlerService optionally enriches markdown with JSON-LD/Event data and Seated widget API events
        │    │    ├─ CrawlerService.clean_markdown() → strip boilerplate, cap at 50k chars
        │    │    └─ ExtractorService.extract_events() → Gemini 2.5 Flash structured JSON output
        │    │
@@ -139,6 +157,8 @@ APScheduler (every N hours)
        │         └─ notifier.send_telegram() if new + confirmed
        │
        └─▶ Record ScanRun + ScanSourceResult history
+            ├─▶ Optional debug_capture JSON artifact if Settings → Scan Debugging is enabled
+            └─▶ Optional Telegram source-health alert if a source warning/error occurs
 ```
 
 ### 4.2 Key Design Decisions
@@ -150,6 +170,8 @@ APScheduler (every N hours)
 - **Crawl4AI sidecar** — Runs as a separate Docker container with shared memory (`shm_size: 1g`) for headless Chromium. The main app communicates with it over HTTP (`http://crawl4ai:11235`).
 - **Gemini structured output** — Uses `response_mime_type="application/json"` + `response_schema=ExtractionResult` for guaranteed parseable responses.
 - **Settings layering** — Secrets come from `.env` (env vars), non-secret preferences are persisted to `data/settings.json` from the UI.
+- **Debug artifacts are file-based, not DB rows** — `app/services/debug_capture.py` writes `data/debug/scan_{id}.json`; it scrubs obvious API key fields and truncates giant strings.
+- **Source warnings are not necessarily fatal** — A source can have `fetch_success=True` but still carry a diagnostic in `fetch_error` when the page crawled but produced no events or very little usable text.
 
 ### 4.3 Database Models (ERD Summary)
 
@@ -181,7 +203,52 @@ ScanRun (1) ──▶ (N) ScanSourceResult    (per-source results within a scan)
 - `SCAN_INTERVAL_HOURS` — defaults to `6`
 
 **Runtime settings (UI-editable, saved to `data/settings.json`):**
-- `scan_interval_hours`, `timezone`, `notify_confirmed`, `notify_review_summary`, `daily_digest_enabled`, `daily_digest_time`
+- `scan_interval_hours`
+- `timezone`
+- `crawl4ai_base_url`
+- `notify_confirmed`
+- `notify_review_summary`
+- `notify_source_health`
+- `daily_digest_enabled`
+- `daily_digest_time`
+- `debug_scan_capture`
+- `debug_scan_retention`
+
+### 4.5 Scan Debugging Workflow
+
+Use this workflow when the user asks "what did Crawl4AI return?", "why did Source Health warn?", or "why did Gemini miss dates?":
+
+1. Go to Settings and enable **Capture scan debug artifacts**.
+2. Force retry the artist/source from Source Health or run Check Now from the dashboard.
+3. Open Scan History and click **Debug** for the scan, or Source Health → **Latest Debug** for the source.
+4. Inspect:
+   - `Cleaned Crawl Sample`: what was actually sent toward Gemini after cleaning/enrichment.
+   - `LLM Request`: model, prompt, temperature, input character count.
+   - `LLM Raw Response`: raw Gemini response text.
+   - `LLM Parsed Response`: structured schema parse.
+   - `Events Found`: raw event data plus `process_result` such as `confirmed`, `possible`, `existing`, or `no_match`.
+   - Ticketmaster debug: attraction/keyword mode, searched profiles, returned candidates, and process results.
+5. Turn debug capture off after testing so `data/debug` does not grow unnecessarily. Retention is controlled by `debug_scan_retention`.
+
+Common source warning text:
+
+`Crawler returned very little page text. The page may be blank, blocked, or rendering tour dates after load.`
+
+This means the crawler received too little useful page text for trustworthy extraction. It can be caused by JavaScript-rendered dates after load, bot-blocking, cookie/geo gates, or a site that uses an embedded API. For Seated widgets, check whether the fallback found and appended events from `cdn.seated.com/api/tour/...`.
+
+### 4.6 Telegram Notification Types
+
+Telegram currently supports:
+
+- Confirmed event notifications via `format_event_notification()`.
+- Review summaries for possible matches via `format_review_summary()`.
+- Source health warnings via `format_source_health_alert()`.
+
+Source health alerts require:
+
+- `settings.notify_source_health == True`
+- `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` configured in `.env`
+- A source warning/error during scan, such as Ticketmaster failure, crawler failure, Gemini extraction failure, or crawler diagnostics for no extracted events.
 
 ---
 
@@ -205,11 +272,21 @@ ScanRun (1) ──▶ (N) ScanSourceResult    (per-source results within a scan)
 - **Alpine.js** — used for client-side interactivity (dropdowns, toggles, modals).
 - **HTMX** — used for partial page updates (form submissions, live search, log tailing).
 - **Jinja2 template inheritance** — all pages extend `base.html`.
+- **Trailing-slash routes matter** — When a router has `prefix="/settings"` plus `@router.get("/")`, links/forms should use `/settings/`, not `/settings`. This is especially important because `<body hx-boost="true">` can make redirect behavior feel like a dead click.
+- **Avoid nested forms** — A prior bug made Settings "Save" appear broken because the Telegram test button used a `<form>` inside the main settings `<form>`. Use button `formaction`/`formmethod` or move forms apart.
 
 ### 5.4 Testing
 - Tests live in `tests/`.
-- Run with: `python -m pytest tests/ -v`
+- Preferred local test command:
+  ```bash
+  APP_DATA_DIR=/tmp/artist-data-test PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 .venv/bin/pytest -q
+  ```
 - Current test coverage: deduplication logic, location matching (haversine, aliases).
+- Route smoke test with lifespan startup:
+  ```bash
+  APP_DATA_DIR=/tmp/artist-data-test DATABASE_URL=sqlite:////tmp/artist-data-test/app.db PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c "from fastapi.testclient import TestClient; from main import app; c=TestClient(app); c.__enter__(); paths=['/health','/','/settings/','/sources/health','/scans/','/locations/','/logs/']; [print(p, c.get(p).status_code) for p in paths]; c.__exit__(None, None, None)"
+  ```
+- Do **not** use local `/app/data` during tests. Set `APP_DATA_DIR` to `/tmp/...` or another writable location.
 
 ---
 
@@ -322,6 +399,12 @@ ssh root@<UNRAID_IP> "cd /mnt/user/appdata/artistv2 && git pull origin main && d
 > ssh root@<UNRAID_IP> "cd /mnt/user/appdata/artistv2 && git pull origin main && docker compose up --build -d && sleep 15 && curl -s http://localhost:5001/health"
 > ```
 
+Known working deploy command from this Mac when using the 1Password SSH agent:
+
+```bash
+SSH_AUTH_SOCK="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock" ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 root@nas.local "cd /mnt/user/appdata/artistv2 && git pull origin main && docker compose up --build -d && sleep 8 && docker compose ps && echo '--- tourtracker logs ---' && docker compose logs tourtracker --tail=80 && echo '--- health ---' && curl -sS http://localhost:5001/health"
+```
+
 ### 6.4 Troubleshooting Deployment
 
 | Symptom | Fix |
@@ -406,17 +489,27 @@ python -m pytest tests/ -v
 
 1. **Crawl4AI response format is inconsistent** — The `markdown` field can be a string OR a dict with `fit_markdown`/`raw` keys. The crawler service handles both cases (`crawler.py` lines 85-93). Always check the type.
 
-2. **SQLite concurrency** — Despite WAL mode, long-running transactions can still cause issues. The scanner opens its own `SessionLocal()` and commits frequently. Don't hold transactions open across HTTP calls or sleep periods.
+2. **Dynamic tour pages may need embedded API fallbacks** — Crawl4AI may see a shell page while dates arrive later via XHR/widget JS. Before assuming Gemini failed, inspect Scan Debug and page scripts/network clues. Seated is currently handled by a dedicated fallback; other vendors may need similar adapters.
 
-3. **Gemini structured output** — The `response.parsed` attribute may be `None` even on a 200 response if the schema doesn't match. Always null-check.
+3. **Very little page text warning** — This is a crawler/content warning, not just an LLM miss. It means there was not enough text to confidently extract events. Check `Cleaned Crawl Sample` in Scan Debug and consider direct API/widget fallbacks.
 
-4. **Template access** — Templates are on `request.app.state.templates`, NOT imported directly. Routes must accept `request: Request` and use `request.app.state.templates.TemplateResponse(...)`.
+4. **SQLite concurrency** — Despite WAL mode, long-running transactions can still cause issues. The scanner opens its own `SessionLocal()` and commits frequently. Don't hold transactions open across HTTP calls or sleep periods.
 
-5. **No Alembic yet** — Schema migrations are not automated. If you add/change columns, the table won't update on existing databases. Either add Alembic or provide a manual SQL migration script.
+5. **Gemini structured output** — The `response.parsed` attribute may be `None` even on a 200 response if the schema doesn't match. Always null-check. `ExtractorService.last_debug` captures prompt/model/raw/parsed data for debug artifacts.
 
-6. **Dedup key does not include time** — Two events at the same venue on the same date but different times will collide. This is intentional (most artists don't do two shows at the same venue on the same day).
+6. **Template access** — Templates are on `request.app.state.templates`, NOT imported directly. Routes must accept `request: Request` and use `request.app.state.templates.TemplateResponse(...)`.
 
-7. **The `data/` directory is git-ignored** — The database, logs, and settings.json are never committed. They persist on the Unraid server via the Docker volume mount.
+7. **No Alembic yet** — Schema migrations are not automated. If you add/change columns, the table won't update on existing databases. Either add Alembic or provide a manual SQL migration script. Prefer avoiding schema changes unless necessary; recent debug artifacts intentionally use JSON files to avoid migration needs.
+
+8. **Dedup key does not include time** — Two events at the same venue on the same date but different times will collide. This is intentional (most artists don't do two shows at the same venue on the same day).
+
+9. **The `data/` directory is git-ignored** — The database, logs, settings.json, and debug artifacts are never committed. They persist on the Unraid server via the Docker volume mount.
+
+10. **Settings booleans default false in forms** — FastAPI checkbox fields use `Form(False)`. If adding a new checkbox, add it to `AppSettings`, `settings_routes.update_settings()`, and `settings/index.html`.
+
+11. **Source health notices increment on diagnostics** — `consecutive_failures` may increment for "no events / suspicious crawl" diagnostics, even when HTTP fetching technically succeeded. Source Health is meant to expose these as attention items.
+
+12. **HTMX boosted links and redirects** — Because `hx-boost` is on `<body>`, avoid relying on slash redirects for navigation or forms. Use exact route URLs.
 
 ---
 
@@ -430,3 +523,5 @@ python -m pytest tests/ -v
 6. ✅ **Check `docker compose logs tourtracker --tail=50`** after every deploy to verify no errors.
 7. ✅ **Update `.env.example`** when adding new environment variables.
 8. ✅ **Preserve all existing comments and docstrings** unless directly related to your change.
+9. ✅ **Use exact trailing-slash URLs** for prefix routes such as `/settings/`, `/scans/`, `/locations/`, and `/logs/`.
+10. ✅ **When debugging crawl misses, enable Scan Debugging and inspect `Latest Debug` before changing prompts.**
