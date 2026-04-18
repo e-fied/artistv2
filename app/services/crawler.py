@@ -202,16 +202,33 @@ class CrawlerService:
 
     def _fetch_seated_api_events_markdown(self, client: httpx.Client, artist_id: str) -> Optional[str]:
         """Fetch events directly from Seated's widget API."""
-        api_response = client.get(
-            f"https://cdn.seated.com/api/tour/{artist_id}",
-            params={"include": "tour-events"},
-            headers={
+        api_url = f"https://cdn.seated.com/api/tour/{artist_id}"
+        header_options = [
+            {
                 "Accept": "application/json",
                 "X-Client-Version": "tourtracker",
             },
-        )
-        api_response.raise_for_status()
-        return self._seated_api_to_markdown(api_response.json())
+            {"Accept": "application/json"},
+            {},
+        ]
+
+        last_response = None
+        for headers in header_options:
+            api_response = client.get(
+                api_url,
+                params={"include": "tour-events"},
+                headers=headers,
+            )
+            if api_response.status_code == 406:
+                last_response = api_response
+                continue
+
+            api_response.raise_for_status()
+            return self._seated_api_to_markdown(api_response.json())
+
+        if last_response is not None:
+            last_response.raise_for_status()
+        return None
 
     def _find_seated_artist_id(self, client: httpx.Client, page_url: str, page_html: str) -> Optional[str]:
         """Find Seated's artist id in initial HTML, widget links, or same-origin chunks."""

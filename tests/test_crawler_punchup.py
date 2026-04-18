@@ -139,6 +139,45 @@ def test_seated_api_to_markdown_uses_relationship_order_and_end_date():
     assert "2026-11-19 to 2026-11-22 | Ember Shores" in markdown
 
 
+def test_fetch_seated_api_retries_406_with_fallback_headers():
+    crawler = CrawlerService(AppSettings())
+    request_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        if request_count == 1:
+            return httpx.Response(406)
+        return httpx.Response(
+            200,
+            json={
+                "data": {"attributes": {"name": "ILLENIUM"}},
+                "included": [
+                    {
+                        "id": "4e642cc0-6c2b-4e2e-b65f-c83b56672809",
+                        "type": "tour-events",
+                        "attributes": {
+                            "starts-at-date-local": "2026-05-02",
+                            "venue-name": "Empire Music Festival",
+                            "formatted-address": "Guatemala City, Guatemala",
+                        },
+                    }
+                ],
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    markdown = crawler._fetch_seated_api_events_markdown(
+        client,
+        "992ceda5-c055-4a4b-b6ee-6e92d81f8d57",
+    )
+
+    assert request_count == 2
+    assert markdown is not None
+    assert "Empire Music Festival" in markdown
+
+
 def test_fetch_embedded_events_uses_browser_headers_for_seated_pages(monkeypatch):
     crawler = CrawlerService(AppSettings())
     real_client = httpx.Client
