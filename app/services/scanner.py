@@ -31,6 +31,7 @@ from app.services.location_matcher import (
 from app.services.notifier import (
     format_event_notification,
     format_review_summary,
+    format_source_health_alert,
     send_telegram,
 )
 from app.services.ticketmaster import TicketmasterClient
@@ -293,6 +294,7 @@ def _scan_single_artist(
             tm_source.consecutive_failures += 1
             tm_source.last_error = str(e)[:500]
             logger.error(f"Ticketmaster scan for {artist.name} failed: {e}")
+            _notify_source_health(settings, artist, tm_source, source_result.fetch_error)
             append_source_debug(
                 scan_run_id,
                 settings.debug_scan_capture,
@@ -407,6 +409,7 @@ def _scan_single_artist(
                             logger.warning(
                                 f"No events extracted for {w_source.url}: {diagnostic}"
                             )
+                            _notify_source_health(settings, artist, w_source, diagnostic)
                         else:
                             w_source.last_success_at = datetime.utcnow()
                             w_source.consecutive_failures = 0
@@ -419,6 +422,7 @@ def _scan_single_artist(
                         w_source.last_error = source_result.fetch_error
                         logger.warning(f"Extracted no events or LLM failed for {w_source.url}: {source_result.fetch_error}")
                         w_source.consecutive_failures += 1
+                        _notify_source_health(settings, artist, w_source, source_result.fetch_error)
 
                     append_source_debug(
                         scan_run_id,
@@ -442,6 +446,7 @@ def _scan_single_artist(
                     source_result.fetch_error = "Crawler failed to fetch markdown"
                     w_source.consecutive_failures += 1
                     w_source.last_error = source_result.fetch_error
+                    _notify_source_health(settings, artist, w_source, source_result.fetch_error)
                     append_source_debug(
                         scan_run_id,
                         settings.debug_scan_capture,
@@ -459,6 +464,7 @@ def _scan_single_artist(
                 w_source.consecutive_failures += 1
                 w_source.last_error = str(e)[:500]
                 logger.error(f"Web scan for {w_source.url} failed: {e}")
+                _notify_source_health(settings, artist, w_source, source_result.fetch_error)
                 append_source_debug(
                     scan_run_id,
                     settings.debug_scan_capture,
@@ -595,6 +601,23 @@ def _notify_confirmed(event: Event, artist: Artist) -> None:
                 db.commit()
         finally:
             db.close()
+
+
+def _notify_source_health(settings, artist: Artist, source: ArtistSource, problem: str) -> None:
+    """Send a Telegram notification for a source health warning."""
+    if not settings.notify_source_health:
+        return
+    if not settings.telegram_bot_token or not settings.telegram_chat_id:
+        return
+
+    message = format_source_health_alert(
+        artist_name=artist.name,
+        source_type=source.source_type,
+        source_url=source.url,
+        problem=problem,
+        consecutive_failures=source.consecutive_failures,
+    )
+    send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, message)
 
 
 def _send_review_summary(db: Session, settings, total_possible: int) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from html import escape
 from typing import Optional
 
 import httpx
@@ -93,5 +94,36 @@ def format_review_summary(
 
     lines.append("")
     lines.append("Open the Review Inbox to confirm or reject.")
+
+    return "\n".join(lines)
+
+
+def format_source_health_alert(
+    artist_name: str,
+    source_type: str,
+    source_url: Optional[str],
+    problem: str,
+    consecutive_failures: int,
+) -> str:
+    """Format a source health warning as an HTML Telegram message."""
+    lines = [
+        "⚠️ <b>Source Health Problem</b>",
+        "",
+        f"🎤 <b>{escape(artist_name)}</b>",
+        f"📡 Source: {escape(source_type)}",
+    ]
+
+    if source_url:
+        lines.append(f"🔗 {escape(source_url)}")
+
+    lines.extend(
+        [
+            f"🔁 Notices: {consecutive_failures}",
+            "",
+            f"<pre>{escape(problem[:1500])}</pre>",
+            "",
+            "Open Source Health or the latest Scan Debug page to inspect the crawl output.",
+        ]
+    )
 
     return "\n".join(lines)

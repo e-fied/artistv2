@@ -44,6 +44,7 @@ def update_settings(
     timezone: str = Form("America/Vancouver"),
     notify_confirmed: bool = Form(False),
     notify_review_summary: bool = Form(False),
+    notify_source_health: bool = Form(False),
     daily_digest_enabled: bool = Form(False),
     daily_digest_time: str = Form("21:00"),
     crawl4ai_base_url: str = Form("http://crawl4ai:11235"),
@@ -57,6 +58,7 @@ def update_settings(
     settings.timezone = timezone
     settings.notify_confirmed = notify_confirmed
     settings.notify_review_summary = notify_review_summary
+    settings.notify_source_health = notify_source_health
     settings.daily_digest_enabled = daily_digest_enabled
     settings.daily_digest_time = daily_digest_time
     settings.crawl4ai_base_url = crawl4ai_base_url
@@ -64,7 +66,7 @@ def update_settings(
     settings.debug_scan_retention = debug_scan_retention
 
     save_settings(settings)
-    return RedirectResponse(url="/settings?success=saved", status_code=303)
+    return RedirectResponse(url="/settings/?success=saved", status_code=303)
 
 
 @router.post("/test-telegram")
@@ -72,7 +74,7 @@ def test_telegram(request: Request):
     """Send a test Telegram message."""
     settings = load_settings()
     if not settings.telegram_bot_token or not settings.telegram_chat_id:
-        return RedirectResponse(url="/settings?error=telegram_not_configured", status_code=303)
+        return RedirectResponse(url="/settings/?error=telegram_not_configured", status_code=303)
 
     import httpx
 
@@ -87,8 +89,8 @@ def test_telegram(request: Request):
             timeout=15.0,
         )
         if response.status_code == 200 and response.json().get("ok"):
-            return RedirectResponse(url="/settings?success=telegram_sent", status_code=303)
+            return RedirectResponse(url="/settings/?success=telegram_sent", status_code=303)
         else:
-            return RedirectResponse(url="/settings?error=telegram_failed", status_code=303)
+            return RedirectResponse(url="/settings/?error=telegram_failed", status_code=303)
     except Exception:
-        return RedirectResponse(url="/settings?error=telegram_failed", status_code=303)
+        return RedirectResponse(url="/settings/?error=telegram_failed", status_code=303)

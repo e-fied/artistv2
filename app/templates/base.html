@@ -60,7 +60,7 @@
           {% endif %}
         </a>
 
-        <a href="/scans" class="{% if request.url.path.startswith('/scans') %}active{% endif %}">
+        <a href="/scans/" class="{% if request.url.path.startswith('/scans') %}active{% endif %}">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
           </svg>
@@ -74,21 +74,21 @@
           Source Health
         </a>
 
-        <a href="/locations" class="{% if request.url.path.startswith('/locations') %}active{% endif %}">
+        <a href="/locations/" class="{% if request.url.path.startswith('/locations') %}active{% endif %}">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
           </svg>
           Locations
         </a>
 
-        <a href="/logs" class="{% if request.url.path.startswith('/logs') %}active{% endif %}">
+        <a href="/logs/" class="{% if request.url.path.startswith('/logs') %}active{% endif %}">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
           </svg>
           System Logs
         </a>
 
-        <a href="/settings" class="{% if request.url.path.startswith('/settings') %}active{% endif %}">
+        <a href="/settings/" class="{% if request.url.path.startswith('/settings') %}active{% endif %}">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
           </svg>

@@ -8,7 +8,7 @@
       <h2>{% if editing %}Edit Location{% else %}Add Location{% endif %}</h2>
       <p class="subtitle">{% if editing %}Update {{ profile.name }}{% else %}Create a new location profile{% endif %}</p>
     </div>
-    <a href="/locations" class="btn btn-secondary">← Back</a>
+    <a href="/locations/" class="btn btn-secondary">← Back</a>
   </div>
 
   <div class="card" style="max-width: 640px;">
@@ -84,7 +84,7 @@
         <button type="submit" class="btn btn-primary btn-lg">
           {% if editing %}Save Changes{% else %}Create Location{% endif %}
         </button>
-        <a href="/locations" class="btn btn-secondary btn-lg">Cancel</a>
+        <a href="/locations/" class="btn btn-secondary btn-lg">Cancel</a>
       </div>
     </form>
   </div>

@@ -58,6 +58,11 @@
           <button type="submit" class="btn btn-secondary btn-sm">Force Retry</button>
         </form>
         <a href="/artists/{{ source.artist_id }}/edit" class="btn btn-ghost btn-sm ml-sm">Edit Artist</a>
+        {% if source.id in latest_debug_scan_by_source %}
+          <a href="/scans/{{ latest_debug_scan_by_source[source.id] }}/debug" class="btn btn-ghost btn-sm ml-sm">Latest Debug</a>
+        {% else %}
+          <div class="text-xs text-muted mt-sm">Enable Scan Debugging, then force retry to capture crawl output.</div>
+        {% endif %}
       </div>
     </div>
     {% endfor %}

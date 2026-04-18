@@ -45,7 +45,7 @@ def scan_debug_page(scan_run_id: int, request: Request, db: Session = Depends(ge
         .first()
     )
     if not scan:
-        return RedirectResponse(url="/scans", status_code=303)
+        return RedirectResponse(url="/scans/", status_code=303)
 
     debug_data = read_scan_debug(scan_run_id)
 

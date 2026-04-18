@@ -24,7 +24,7 @@
     <div class="toast warning mb-md" style="position: static; max-width: none;">⚠️ Telegram not configured — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in your env file</div>
   {% endif %}
 
-  <form method="post" action="/settings" style="max-width: 640px;">
+  <form method="post" action="/settings/" style="max-width: 640px;">
 
     <!-- API Keys (read-only, from env) -->
     <div class="card mb-lg">
@@ -111,6 +111,13 @@
           <input type="checkbox" name="notify_review_summary" value="true"
                  {% if settings.notify_review_summary %}checked{% endif %}>
           <span class="text-sm">Send review summary for possible matches</span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-check">
+          <input type="checkbox" name="notify_source_health" value="true"
+                 {% if settings.notify_source_health %}checked{% endif %}>
+          <span class="text-sm">Notify on source health problems</span>
         </label>
       </div>
       <div class="form-group">

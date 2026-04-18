@@ -175,7 +175,7 @@ def create_location(
             ))
 
     db.commit()
-    return RedirectResponse(url="/locations", status_code=303)
+    return RedirectResponse(url="/locations/", status_code=303)
 
 
 @router.get("/{profile_id}/edit")
@@ -185,7 +185,7 @@ def edit_location_page(
     """Render the edit location form."""
     profile = db.query(LocationProfile).filter(LocationProfile.id == profile_id).first()
     if not profile:
-        return RedirectResponse(url="/locations", status_code=303)
+        return RedirectResponse(url="/locations/", status_code=303)
 
     return request.app.state.templates.TemplateResponse(request=request, name="locations/form.html", context={
             "request": request,
@@ -213,7 +213,7 @@ def update_location(
     """Update an existing location profile."""
     profile = db.query(LocationProfile).filter(LocationProfile.id == profile_id).first()
     if not profile:
-        return RedirectResponse(url="/locations", status_code=303)
+        return RedirectResponse(url="/locations/", status_code=303)
 
     resolved_lat, resolved_lon, error = _resolve_coordinates(
         name=name,
@@ -266,7 +266,7 @@ def update_location(
             ))
 
     db.commit()
-    return RedirectResponse(url="/locations", status_code=303)
+    return RedirectResponse(url="/locations/", status_code=303)
 
 
 @router.post("/{profile_id}/delete")
@@ -276,4 +276,4 @@ def delete_location(profile_id: int, db: Session = Depends(get_db)):
     if profile:
         db.delete(profile)
         db.commit()
-    return RedirectResponse(url="/locations", status_code=303)
+    return RedirectResponse(url="/locations/", status_code=303)

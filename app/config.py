@@ -52,6 +52,7 @@ class AppSettings(BaseModel):
     # --- Notifications ---
     notify_confirmed: bool = Field(default=True, description="Telegram on confirmed events")
     notify_review_summary: bool = Field(default=True, description="Telegram summary for possible events")
+    notify_source_health: bool = Field(default=True, description="Telegram on source health warnings")
     daily_digest_enabled: bool = Field(default=False)
     daily_digest_time: str = Field(default="21:00")
 
