@@ -17,6 +17,8 @@
 The app has recently been tuned for debugging crawl failures and dynamic tour pages. A new Codex chat should assume these features exist unless the code says otherwise:
 
 - **Seated widget fallback is implemented.** Adam Ray's site exposed tour dates through `https://cdn.seated.com/api/tour/{uuid}?include=tour-events`. `CrawlerService` now detects Seated widget/Nuxt references, resolves the artist/tour id, fetches the Seated JSON:API endpoint, and appends those events to the crawl markdown before Gemini extraction.
+- **Punchup API fallback is implemented.** Timmy No Brakes' Punchup tour page (`https://punchup.live/timmynobrakes/tour`) rendered mostly as a Next.js shell to crawlers, while the actual dates came from `https://punchup.live/api/shows?comedianId={uuid}&startDatetime={iso}`. `CrawlerService` now detects Punchup pages, resolves the comedian id from embedded Next.js/RSC data, fetches the Punchup shows API, filters out shows hidden from that comedian page, and appends full tour events to the crawl markdown before Gemini extraction.
+- **Embedded event enrichers are isolated.** JSON-LD, Seated, and Punchup enrichment run independently, so one failing adapter should not prevent another adapter from appending events.
 - **Crawler diagnostics are implemented.** If a page crawls successfully but no events are extracted, the crawler diagnoses likely causes such as very little page text, bot blocking, blank pages, JSON-LD-only events, or dates rendered after load.
 - **Opt-in scan debug artifacts are implemented.** Settings → Scan Debugging can capture prompts, Gemini raw/parsed responses, cleaned crawl samples, Ticketmaster candidates, and processed events to `data/debug/scan_{scan_run_id}.json`.
 - **Scan History shows live progress.** Running scans update a progress message such as "checking Ticketmaster", "crawling URL", or "sending cleaned chars to Gemini", and the Scan History table auto-refreshes while scans are running.
@@ -25,7 +27,7 @@ The app has recently been tuned for debugging crawl failures and dynamic tour pa
 - **Timezone display is Vancouver-local.** Templates use the `localtime` Jinja filter from `main.py`; stored DB timestamps are UTC-ish/naive, displayed in `America/Vancouver` by default.
 - **Location lat/lon can be inferred for known cities.** Location forms can geocode common city names/fallback known cities such as Denver, so the user does not have to manually know latitude/longitude.
 - **Sidebar links use trailing slashes.** Routes mounted at prefixes like `/scans`, `/locations`, `/logs`, `/settings` define `@router.get("/")`; nav links should use `/scans/`, `/locations/`, `/logs/`, `/settings/` to avoid HTMX boosted redirect weirdness.
-- **Recent relevant commits:** `c1716ec Notify source health problems`, `22d73f6 Fix settings save and scan progress`, `a71f6b0 Add opt-in scan debug artifacts`, `b62d0f8 Improve scan debugging and location entry`, `a4bc5e6 Add crawler diagnostics for empty tour pages`, `aaaf1a6 Add Seated widget tour fallback`.
+- **Recent relevant commits:** `d46fa72 Isolate embedded event enrichment adapters`, `a4e50e8 Add Punchup tour API fallback`, `c1716ec Notify source health problems`, `22d73f6 Fix settings save and scan progress`, `a71f6b0 Add opt-in scan debug artifacts`, `b62d0f8 Improve scan debugging and location entry`, `a4bc5e6 Add crawler diagnostics for empty tour pages`, `aaaf1a6 Add Seated widget tour fallback`.
 
 ---
 
@@ -124,6 +126,7 @@ artistv2/
 │       └── app.log             # Application log file
 │
 └── tests/
+    ├── test_crawler_punchup.py # Punchup API fallback/id parsing tests
     ├── test_dedup.py           # Dedup key generation tests
     └── test_location_matcher.py # Haversine + matching tests
 ```
@@ -144,7 +147,7 @@ APScheduler (every N hours)
        │    │
        │    ├─▶ [Web Sources] (official_website, manual_url)
        │    │    ├─ CrawlerService.fetch_markdown() → tries Crawl4AI sidecar, falls back to Firecrawl
-       │    │    ├─ CrawlerService optionally enriches markdown with JSON-LD/Event data and Seated widget API events
+       │    │    ├─ CrawlerService optionally enriches markdown with JSON-LD/Event data, Seated widget API events, and Punchup shows API events
        │    │    ├─ CrawlerService.clean_markdown() → strip boilerplate, cap at 50k chars
        │    │    └─ ExtractorService.extract_events() → Gemini 2.5 Flash structured JSON output
        │    │
@@ -234,7 +237,7 @@ Common source warning text:
 
 `Crawler returned very little page text. The page may be blank, blocked, or rendering tour dates after load.`
 
-This means the crawler received too little useful page text for trustworthy extraction. It can be caused by JavaScript-rendered dates after load, bot-blocking, cookie/geo gates, or a site that uses an embedded API. For Seated widgets, check whether the fallback found and appended events from `cdn.seated.com/api/tour/...`.
+This means the crawler received too little useful page text for trustworthy extraction. It can be caused by JavaScript-rendered dates after load, bot-blocking, cookie/geo gates, or a site that uses an embedded API. For Seated widgets, check whether the fallback found and appended events from `cdn.seated.com/api/tour/...`. For Punchup pages, check whether the fallback found a comedian id and appended events from `punchup.live/api/shows`.
 
 ### 4.6 Telegram Notification Types
 
@@ -489,27 +492,29 @@ python -m pytest tests/ -v
 
 1. **Crawl4AI response format is inconsistent** — The `markdown` field can be a string OR a dict with `fit_markdown`/`raw` keys. The crawler service handles both cases (`crawler.py` lines 85-93). Always check the type.
 
-2. **Dynamic tour pages may need embedded API fallbacks** — Crawl4AI may see a shell page while dates arrive later via XHR/widget JS. Before assuming Gemini failed, inspect Scan Debug and page scripts/network clues. Seated is currently handled by a dedicated fallback; other vendors may need similar adapters.
+2. **Dynamic tour pages may need embedded API fallbacks** — Crawl4AI may see a shell page while dates arrive later via XHR/widget JS. Before assuming Gemini failed, inspect Scan Debug and page scripts/network clues. Seated and Punchup are currently handled by dedicated fallbacks; other vendors may need similar adapters.
 
-3. **Very little page text warning** — This is a crawler/content warning, not just an LLM miss. It means there was not enough text to confidently extract events. Check `Cleaned Crawl Sample` in Scan Debug and consider direct API/widget fallbacks.
+3. **"See All" buttons often hide already-fetched data** — Some artist pages initially render only a handful of shows and require clicking labels such as "See All (84)" in the browser. For Punchup, the full show list already comes from `/api/shows`; the button is client-side display logic, so the API fallback is more reliable than trying to make Crawl4AI click it. For new vendors, inspect the network/API data before adding click automation.
 
-4. **SQLite concurrency** — Despite WAL mode, long-running transactions can still cause issues. The scanner opens its own `SessionLocal()` and commits frequently. Don't hold transactions open across HTTP calls or sleep periods.
+4. **Very little page text warning** — This is a crawler/content warning, not just an LLM miss. It means there was not enough text to confidently extract events. Check `Cleaned Crawl Sample` in Scan Debug and consider direct API/widget fallbacks.
 
-5. **Gemini structured output** — The `response.parsed` attribute may be `None` even on a 200 response if the schema doesn't match. Always null-check. `ExtractorService.last_debug` captures prompt/model/raw/parsed data for debug artifacts.
+5. **SQLite concurrency** — Despite WAL mode, long-running transactions can still cause issues. The scanner opens its own `SessionLocal()` and commits frequently. Don't hold transactions open across HTTP calls or sleep periods.
 
-6. **Template access** — Templates are on `request.app.state.templates`, NOT imported directly. Routes must accept `request: Request` and use `request.app.state.templates.TemplateResponse(...)`.
+6. **Gemini structured output** — The `response.parsed` attribute may be `None` even on a 200 response if the schema doesn't match. Always null-check. `ExtractorService.last_debug` captures prompt/model/raw/parsed data for debug artifacts.
 
-7. **No Alembic yet** — Schema migrations are not automated. If you add/change columns, the table won't update on existing databases. Either add Alembic or provide a manual SQL migration script. Prefer avoiding schema changes unless necessary; recent debug artifacts intentionally use JSON files to avoid migration needs.
+7. **Template access** — Templates are on `request.app.state.templates`, NOT imported directly. Routes must accept `request: Request` and use `request.app.state.templates.TemplateResponse(...)`.
 
-8. **Dedup key does not include time** — Two events at the same venue on the same date but different times will collide. This is intentional (most artists don't do two shows at the same venue on the same day).
+8. **No Alembic yet** — Schema migrations are not automated. If you add/change columns, the table won't update on existing databases. Either add Alembic or provide a manual SQL migration script. Prefer avoiding schema changes unless necessary; recent debug artifacts intentionally use JSON files to avoid migration needs.
 
-9. **The `data/` directory is git-ignored** — The database, logs, settings.json, and debug artifacts are never committed. They persist on the Unraid server via the Docker volume mount.
+9. **Dedup key does not include time** — Two events at the same venue on the same date but different times will collide. This is intentional (most artists don't do two shows at the same venue on the same day).
 
-10. **Settings booleans default false in forms** — FastAPI checkbox fields use `Form(False)`. If adding a new checkbox, add it to `AppSettings`, `settings_routes.update_settings()`, and `settings/index.html`.
+10. **The `data/` directory is git-ignored** — The database, logs, settings.json, and debug artifacts are never committed. They persist on the Unraid server via the Docker volume mount.
 
-11. **Source health notices increment on diagnostics** — `consecutive_failures` may increment for "no events / suspicious crawl" diagnostics, even when HTTP fetching technically succeeded. Source Health is meant to expose these as attention items.
+11. **Settings booleans default false in forms** — FastAPI checkbox fields use `Form(False)`. If adding a new checkbox, add it to `AppSettings`, `settings_routes.update_settings()`, and `settings/index.html`.
 
-12. **HTMX boosted links and redirects** — Because `hx-boost` is on `<body>`, avoid relying on slash redirects for navigation or forms. Use exact route URLs.
+12. **Source health notices increment on diagnostics** — `consecutive_failures` may increment for "no events / suspicious crawl" diagnostics, even when HTTP fetching technically succeeded. Source Health is meant to expose these as attention items.
+
+13. **HTMX boosted links and redirects** — Because `hx-boost` is on `<body>`, avoid relying on slash redirects for navigation or forms. Use exact route URLs.
 
 ---
 
