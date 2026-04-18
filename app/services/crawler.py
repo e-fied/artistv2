@@ -56,9 +56,10 @@ class CrawlerService:
             elif crawler == "firecrawl" and self.firecrawl:
                 markdown = self._fetch_firecrawl(url)
 
-            if markdown:
+            if markdown is not None:
                 enriched_markdown = self._append_embedded_events(url, markdown)
-                return enriched_markdown, crawler
+                if enriched_markdown.strip():
+                    return enriched_markdown, crawler
             
             logger.warning(f"{crawler} failed for {url}. Falling back...")
 
@@ -88,21 +89,34 @@ class CrawlerService:
                 results = data.get("results")
                 if results and len(results) > 0:
                     md_val = results[0].get("markdown")
-                    if isinstance(md_val, dict):
-                        return md_val.get("fit_markdown") or md_val.get("raw") or str(md_val)
-                    return md_val
+                    return self._crawl_markdown_to_text(md_val)
                 # Fallback structure just in case
                 if "markdown" in data:
                     md_val = data["markdown"]
-                    if isinstance(md_val, dict):
-                        return md_val.get("fit_markdown") or md_val.get("raw") or str(md_val)
-                    return md_val
+                    return self._crawl_markdown_to_text(md_val)
                 
                 logger.error(f"Crawl4AI returned success but no markdown found: {data.keys()}")
                 return None
         except Exception as e:
             logger.error(f"Crawl4AI error: {e}")
             return None
+
+    def _crawl_markdown_to_text(self, markdown_value) -> Optional[str]:
+        """Normalize Crawl4AI markdown values without leaking Python dict text."""
+        if markdown_value is None:
+            return None
+
+        if isinstance(markdown_value, str):
+            return markdown_value
+
+        if isinstance(markdown_value, dict):
+            for key in ("fit_markdown", "raw_markdown", "markdown_with_citations", "raw"):
+                value = markdown_value.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value
+            return ""
+
+        return str(markdown_value)
 
     def _fetch_firecrawl(self, url: str) -> Optional[str]:
         """Fetch URL using Firecrawl API."""
@@ -133,6 +147,7 @@ class CrawlerService:
                 page_html = page_response.text
 
                 sections = []
+                is_punchup = urlparse(url).netloc.lower() == "punchup.live"
 
                 try:
                     json_ld_markdown = self._json_ld_events_to_markdown(page_html)
@@ -140,6 +155,14 @@ class CrawlerService:
                         sections.append(json_ld_markdown)
                 except Exception as e:
                     logger.debug(f"JSON-LD event enrichment failed for {url}: {e}")
+
+                if is_punchup:
+                    try:
+                        punchup_markdown = self._fetch_punchup_api_events_markdown(client, url, page_html)
+                        if punchup_markdown:
+                            sections.append(punchup_markdown)
+                    except Exception as e:
+                        logger.debug(f"Punchup event enrichment failed for {url}: {e}")
 
                 try:
                     artist_id = self._find_seated_artist_id(client, url, page_html)
@@ -150,12 +173,13 @@ class CrawlerService:
                 except Exception as e:
                     logger.debug(f"Seated event enrichment failed for {url}: {e}")
 
-                try:
-                    punchup_markdown = self._fetch_punchup_api_events_markdown(client, url, page_html)
-                    if punchup_markdown:
-                        sections.append(punchup_markdown)
-                except Exception as e:
-                    logger.debug(f"Punchup event enrichment failed for {url}: {e}")
+                if not is_punchup:
+                    try:
+                        punchup_markdown = self._fetch_punchup_api_events_markdown(client, url, page_html)
+                        if punchup_markdown:
+                            sections.append(punchup_markdown)
+                    except Exception as e:
+                        logger.debug(f"Punchup event enrichment failed for {url}: {e}")
 
                 return "\n\n".join(sections) if sections else None
         except Exception as e:

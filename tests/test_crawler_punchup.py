@@ -20,6 +20,43 @@ def test_find_punchup_comedian_id_from_escaped_next_data():
     assert artist_id == "903698e7-3646-4662-9337-b0f435f5ab2e"
 
 
+def test_crawl_markdown_to_text_uses_raw_markdown_without_dict_string():
+    crawler = CrawlerService(AppSettings())
+    markdown_value = {
+        "raw_markdown": "Punchup shell text",
+        "markdown_with_citations": "Punchup shell text with citations",
+        "references_markdown": "\n\n## References\n\n",
+        "fit_markdown": "",
+        "fit_html": "",
+    }
+
+    assert crawler._crawl_markdown_to_text(markdown_value) == "Punchup shell text"
+
+
+def test_crawl_markdown_to_text_returns_empty_for_blank_dict():
+    crawler = CrawlerService(AppSettings())
+    markdown_value = {
+        "raw_markdown": "\n",
+        "markdown_with_citations": "\n",
+        "references_markdown": "\n\n## References\n\n",
+        "fit_markdown": "",
+        "fit_html": "",
+    }
+
+    assert crawler._crawl_markdown_to_text(markdown_value) == ""
+
+
+def test_fetch_markdown_enriches_blank_crawl4ai_result():
+    crawler = CrawlerService(AppSettings())
+    crawler._fetch_crawl4ai = lambda url: ""
+    crawler._append_embedded_events = lambda url, markdown: "Punchup API tour events"
+
+    markdown, crawler_used = crawler.fetch_markdown("https://punchup.live/timmynobrakes/tour")
+
+    assert markdown == "Punchup API tour events"
+    assert crawler_used == "crawl4ai"
+
+
 def test_punchup_api_to_markdown_includes_visible_shows_only():
     crawler = CrawlerService(AppSettings())
     comedian_id = "903698e7-3646-4662-9337-b0f435f5ab2e"
