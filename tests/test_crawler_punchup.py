@@ -48,6 +48,17 @@ def test_crawl_markdown_to_text_returns_empty_for_blank_dict():
     assert crawler._crawl_markdown_to_text(markdown_value) == ""
 
 
+def test_crawl_markdown_to_text_parses_stringified_markdown_dict():
+    crawler = CrawlerService(AppSettings())
+    markdown_value = (
+        "{'raw_markdown': 'Illenium shell text', "
+        "'markdown_with_citations': 'Illenium cited text', "
+        "'fit_markdown': '', 'fit_html': ''}"
+    )
+
+    assert crawler._crawl_markdown_to_text(markdown_value) == "Illenium shell text"
+
+
 def test_fetch_markdown_enriches_blank_crawl4ai_result():
     crawler = CrawlerService(AppSettings())
     crawler._fetch_crawl4ai = lambda url: ""
@@ -57,6 +68,123 @@ def test_fetch_markdown_enriches_blank_crawl4ai_result():
 
     assert markdown == "Punchup API tour events"
     assert crawler_used == "crawl4ai"
+
+
+def test_find_seated_artist_id_from_widget_markup():
+    crawler = CrawlerService(AppSettings())
+    page_html = (
+        '<script id="seated-55fdf2c0-script-992ceda5-c055-4a4b-b6ee-6e92d81f8d57" '
+        'data-artist-id="992ceda5-c055-4a4b-b6ee-6e92d81f8d57" '
+        'src="https://widget.seated.com/widget.js"></script>'
+    )
+
+    artist_id = crawler._find_seated_artist_id_in_text(page_html)
+
+    assert artist_id == "992ceda5-c055-4a4b-b6ee-6e92d81f8d57"
+
+
+def test_find_seated_artist_id_from_notification_link():
+    crawler = CrawlerService(AppSettings())
+    page_html = (
+        '<a href="https://go.seated.com/notifications/welcome/'
+        '992ceda5-c055-4a4b-b6ee-6e92d81f8d57">Follow ILLENIUM</a>'
+    )
+
+    artist_id = crawler._find_seated_artist_id_in_text(page_html)
+
+    assert artist_id == "992ceda5-c055-4a4b-b6ee-6e92d81f8d57"
+
+
+def test_seated_api_to_markdown_uses_relationship_order_and_end_date():
+    crawler = CrawlerService(AppSettings())
+    data = {
+        "data": {
+            "attributes": {"name": "ILLENIUM"},
+            "relationships": {
+                "tour-events": {
+                    "data": [
+                        {"id": "may-event", "type": "tour-events"},
+                        {"id": "nov-event", "type": "tour-events"},
+                    ]
+                }
+            },
+        },
+        "included": [
+            {
+                "id": "nov-event",
+                "type": "tour-events",
+                "attributes": {
+                    "starts-at-date-local": "2026-11-19",
+                    "ends-at-date-local": "2026-11-22",
+                    "venue-name": "Ember Shores",
+                    "formatted-address": "Playa del Carmen, Quintana Roo",
+                },
+            },
+            {
+                "id": "may-event",
+                "type": "tour-events",
+                "attributes": {
+                    "starts-at-date-local": "2026-05-02",
+                    "venue-name": "Empire Music Festival",
+                    "formatted-address": "Guatemala City, Guatemala",
+                },
+            },
+        ],
+    }
+
+    markdown = crawler._seated_api_to_markdown(data)
+
+    assert markdown is not None
+    assert markdown.index("Empire Music Festival") < markdown.index("Ember Shores")
+    assert "2026-11-19 to 2026-11-22 | Ember Shores" in markdown
+
+
+def test_fetch_embedded_events_uses_browser_headers_for_seated_pages(monkeypatch):
+    crawler = CrawlerService(AppSettings())
+    real_client = httpx.Client
+    seen_user_agents = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_user_agents.append(request.headers.get("user-agent", ""))
+        if request.url.host == "www.illenium.com":
+            return httpx.Response(
+                200,
+                text=(
+                    '<div id="seated-55fdf2c0" '
+                    'data-artist-id="992ceda5-c055-4a4b-b6ee-6e92d81f8d57"></div>'
+                ),
+            )
+        if request.url.host == "cdn.seated.com":
+            return httpx.Response(
+                200,
+                json={
+                    "data": {"attributes": {"name": "ILLENIUM"}},
+                    "included": [
+                        {
+                            "id": "4e642cc0-6c2b-4e2e-b65f-c83b56672809",
+                            "type": "tour-events",
+                            "attributes": {
+                                "starts-at-date-local": "2026-05-02",
+                                "venue-name": "Empire Music Festival",
+                                "formatted-address": "Guatemala City, Guatemala",
+                            },
+                        }
+                    ],
+                },
+            )
+        return httpx.Response(404)
+
+    def client_factory(*args, **kwargs):
+        return real_client(*args, transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr(httpx, "Client", client_factory)
+
+    markdown = crawler._fetch_embedded_events_markdown("https://www.illenium.com/illenium/#tour")
+
+    assert markdown is not None
+    assert "Seated widget tour events for ILLENIUM" in markdown
+    assert "Empire Music Festival" in markdown
+    assert any("Mozilla/5.0" in user_agent for user_agent in seen_user_agents)
 
 
 def test_punchup_api_refetches_missing_comedian_id():

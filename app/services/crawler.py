@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import logging
+import ast
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from html import unescape
@@ -16,6 +17,16 @@ from firecrawl import FirecrawlApp
 from app.config import AppSettings
 
 logger = logging.getLogger(__name__)
+
+BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/123.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 
 def hash_content(text: str) -> str:
@@ -107,6 +118,9 @@ class CrawlerService:
             return None
 
         if isinstance(markdown_value, str):
+            parsed_markdown = self._parse_stringified_markdown_dict(markdown_value)
+            if parsed_markdown is not None:
+                return self._crawl_markdown_to_text(parsed_markdown)
             return markdown_value
 
         if isinstance(markdown_value, dict):
@@ -141,7 +155,7 @@ class CrawlerService:
     def _fetch_embedded_events_markdown(self, url: str) -> Optional[str]:
         """Fetch events from common structured-data and widget backends."""
         try:
-            with httpx.Client(timeout=20.0, follow_redirects=True) as client:
+            with httpx.Client(timeout=20.0, follow_redirects=True, headers=BROWSER_HEADERS) as client:
                 page_response = client.get(url)
                 page_response.raise_for_status()
                 page_html = page_response.text
@@ -191,16 +205,19 @@ class CrawlerService:
         api_response = client.get(
             f"https://cdn.seated.com/api/tour/{artist_id}",
             params={"include": "tour-events"},
-            headers={"X-Client-Version": "tourtracker"},
+            headers={
+                "Accept": "application/json",
+                "X-Client-Version": "tourtracker",
+            },
         )
         api_response.raise_for_status()
         return self._seated_api_to_markdown(api_response.json())
 
     def _find_seated_artist_id(self, client: httpx.Client, page_url: str, page_html: str) -> Optional[str]:
-        """Find Seated's artist id in initial HTML or same-origin Nuxt chunks."""
-        match = re.search(r'data-artist-id=["\']([^"\']+)["\']', page_html)
-        if match:
-            return unescape(match.group(1))
+        """Find Seated's artist id in initial HTML, widget links, or same-origin chunks."""
+        direct_id = self._find_seated_artist_id_in_text(page_html)
+        if direct_id:
+            return direct_id
 
         parsed_url = urlparse(page_url)
         same_origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
@@ -219,15 +236,46 @@ class CrawlerService:
                 logger.debug(f"Failed to fetch script while looking for Seated artist id: {script_url}: {e}")
                 continue
 
-            match = re.search(r'data-artist-id["\']?\s*:\s*["\']([^"\']+)["\']', script_response.text)
-            if match:
-                return unescape(match.group(1))
+            script_id = self._find_seated_artist_id_in_text(script_response.text)
+            if script_id:
+                return script_id
 
-            match = re.search(r'data-artist-id["\']?\s*,\s*["\']([^"\']+)["\']', script_response.text)
+        return None
+
+    def _find_seated_artist_id_in_text(self, text: str) -> Optional[str]:
+        """Extract a Seated artist/tour UUID from common embed shapes."""
+        uuid_pattern = r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+        patterns = [
+            rf'data-artist-id=["\']{uuid_pattern}["\']',
+            rf'data-artist-id["\']?\s*:\s*["\']{uuid_pattern}["\']',
+            rf'data-artist-id["\']?\s*,\s*["\']{uuid_pattern}["\']',
+            rf'go\.seated\.com/notifications/welcome/{uuid_pattern}',
+            rf'cdn\.seated\.com/api/tour/{uuid_pattern}',
+            rf'id=["\']seated-[^"\']*?-script-{uuid_pattern}["\']',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, text, flags=re.IGNORECASE)
             if match:
                 return unescape(match.group(1))
 
         return None
+
+    def _parse_stringified_markdown_dict(self, value: str):
+        """Recover Crawl4AI markdown dicts that arrive as string representations."""
+        stripped = value.strip()
+        if not stripped.startswith("{") or "raw_markdown" not in stripped:
+            return None
+
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            try:
+                parsed = ast.literal_eval(stripped)
+            except (SyntaxError, ValueError):
+                return None
+
+        return parsed if isinstance(parsed, dict) else None
 
     def _fetch_punchup_api_events_markdown(
         self,
@@ -548,12 +596,35 @@ class CrawlerService:
         if not events:
             return None
 
+        event_by_id = {event.get("id"): event for event in events if event.get("id")}
+        relationship_items = (
+            ((data.get("data") or {}).get("relationships") or {})
+            .get("tour-events", {})
+            .get("data", [])
+        )
+        ordered_ids = [
+            item.get("id")
+            for item in relationship_items
+            if isinstance(item, dict) and item.get("id") in event_by_id
+        ]
+        if ordered_ids:
+            seen_ids = set(ordered_ids)
+            events = [event_by_id[event_id] for event_id in ordered_ids]
+            events.extend(
+                event
+                for event in included
+                if event.get("type") == "tour-events" and event.get("id") not in seen_ids
+            )
+
         artist_name = ((data.get("data") or {}).get("attributes") or {}).get("name", "Artist")
         lines = [f"Seated widget tour events for {artist_name}:"]
 
         for event in events:
             attrs = event.get("attributes") or {}
             date = attrs.get("starts-at-date-local") or attrs.get("starts-at-short") or "Date TBD"
+            end_date = attrs.get("ends-at-date-local")
+            if end_date and end_date != date:
+                date = f"{date} to {end_date}"
             venue = attrs.get("venue-name") or "Venue TBD"
             address = attrs.get("formatted-address") or ""
             details = attrs.get("details") or ""
