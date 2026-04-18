@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import json
 import re
+from datetime import datetime, timezone
 from html import unescape
 from typing import Optional
 from urllib.parse import urljoin, urlparse
@@ -143,6 +144,10 @@ class CrawlerService:
                     if seated_markdown:
                         sections.append(seated_markdown)
 
+                punchup_markdown = self._fetch_punchup_api_events_markdown(client, url, page_html)
+                if punchup_markdown:
+                    sections.append(punchup_markdown)
+
                 return "\n\n".join(sections) if sections else None
         except Exception as e:
             logger.warning(f"Embedded event enrichment failed for {url}: {e}")
@@ -186,6 +191,66 @@ class CrawlerService:
                 return unescape(match.group(1))
 
             match = re.search(r'data-artist-id["\']?\s*,\s*["\']([^"\']+)["\']', script_response.text)
+            if match:
+                return unescape(match.group(1))
+
+        return None
+
+    def _fetch_punchup_api_events_markdown(
+        self,
+        client: httpx.Client,
+        page_url: str,
+        page_html: str,
+    ) -> Optional[str]:
+        """Fetch Punchup's client-loaded tour events from its shows API."""
+        parsed_url = urlparse(page_url)
+        if parsed_url.netloc.lower() != "punchup.live":
+            return None
+
+        comedian_id = self._find_punchup_comedian_id(page_url, page_html)
+        if not comedian_id:
+            return None
+
+        start_datetime = (
+            datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+        api_response = client.get(
+            "https://punchup.live/api/shows",
+            params={
+                "comedianId": comedian_id,
+                "startDatetime": start_datetime,
+            },
+            headers={
+                "Accept": "application/json",
+                "X-Client-Version": "tourtracker",
+            },
+        )
+        api_response.raise_for_status()
+        return self._punchup_api_to_markdown(api_response.json(), page_url, comedian_id)
+
+    def _find_punchup_comedian_id(self, page_url: str, page_html: str) -> Optional[str]:
+        """Find Punchup's comedian id in initial Next.js HTML/RSC data."""
+        parsed_url = urlparse(page_url)
+        slug = parsed_url.path.strip("/").split("/", 1)[0]
+        uuid_pattern = r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+
+        patterns = [
+            rf'\\?"comedian\\?"\s*:\s*\{{\s*\\?"id\\?"\s*:\s*\\?"{uuid_pattern}\\?"',
+        ]
+        if slug:
+            escaped_slug = re.escape(slug)
+            patterns.extend(
+                [
+                    rf'\\?"id\\?"\s*:\s*\\?"{uuid_pattern}\\?".{{0,500}}?\\?"slug\\?"\s*:\s*\\?"{escaped_slug}\\?"',
+                    rf'\\?"slug\\?"\s*:\s*\\?"{escaped_slug}\\?".{{0,500}}?\\?"id\\?"\s*:\s*\\?"{uuid_pattern}\\?"',
+                ]
+            )
+
+        for pattern in patterns:
+            match = re.search(pattern, page_html, flags=re.DOTALL)
             if match:
                 return unescape(match.group(1))
 
@@ -370,6 +435,76 @@ class CrawlerService:
             lines.append(line)
 
         return "\n".join(lines)
+
+    def _punchup_api_to_markdown(self, data, page_url: str, comedian_id: str) -> Optional[str]:
+        """Convert Punchup show API events into LLM-friendly markdown."""
+        if not isinstance(data, list):
+            return None
+
+        visible_events = []
+        for show in data:
+            if not isinstance(show, dict):
+                continue
+
+            show_comedians = show.get("show_comedians") or []
+            matching_entries = [
+                entry
+                for entry in show_comedians
+                if isinstance(entry, dict) and entry.get("id") == comedian_id
+            ]
+            if matching_entries and matching_entries[0].get("hidden_from_comedian_page") is not False:
+                continue
+
+            visible_events.append(show)
+
+        if not visible_events:
+            return None
+
+        artist_name = (
+            self._punchup_text((visible_events[0].get("comedian") or {}).get("display_name"))
+            or self._punchup_text((visible_events[0].get("comedian") or {}).get("name"))
+            or "Artist"
+        )
+        lines = [f"Punchup API tour events for {artist_name}:"]
+
+        for show in visible_events:
+            event_id = self._punchup_text(show.get("id"))
+            date = self._punchup_text(show.get("datetime")) or "Date TBD"
+            title = self._punchup_text(show.get("title")) or artist_name
+            venue = self._punchup_text(show.get("venue")) or "Venue TBD"
+            location = self._punchup_text(show.get("location"))
+            metadata = self._punchup_text(show.get("metadata_text"))
+            ticket_url = self._punchup_text(show.get("ticket_link"))
+            vip_ticket_url = self._punchup_text(show.get("vip_ticket_link"))
+            presale_code = self._punchup_text(show.get("presale_code"))
+            event_url = urljoin(page_url, f"/e/{event_id}") if event_id else ""
+
+            line = f"- {date} | {title} | {venue}"
+            if location:
+                line = f"{line} | {location}"
+            if metadata:
+                line = f"{line} | {metadata}"
+            if show.get("is_sold_out"):
+                line = f"{line} | Sold out"
+            if presale_code:
+                line = f"{line} | Presale code: {presale_code}"
+            if ticket_url:
+                line = f"{line} | Tickets: {ticket_url}"
+            if vip_ticket_url:
+                line = f"{line} | VIP tickets: {vip_ticket_url}"
+            if event_url:
+                line = f"{line} | Event page: {event_url}"
+            lines.append(line)
+
+        return "\n".join(lines)
+
+    def _punchup_text(self, value) -> str:
+        """Return readable text from Punchup API scalar values."""
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        return str(value).strip()
 
     def clean_markdown(self, markdown: str) -> str:
         """Strip links, images, and boilerplate from markdown to save tokens."""
