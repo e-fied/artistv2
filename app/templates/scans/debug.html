@@ -23,31 +23,31 @@
     {% for source in debug_data.sources %}
     <div class="card mb-lg">
       <div class="card-header">
-        <h3 class="card-title">{{ source.source_type }}{% if source.artist %} · {{ source.artist }}{% endif %}</h3>
-        {% if source.crawler_used %}<span class="badge badge-neutral">{{ source.crawler_used }}</span>{% endif %}
-        {% if source.mode %}<span class="badge badge-neutral">{{ source.mode }}</span>{% endif %}
+        <h3 class="card-title">{{ source.get('source_type', 'source') }}{% if source.get('artist') %} · {{ source.get('artist') }}{% endif %}</h3>
+        {% if source.get('crawler_used') %}<span class="badge badge-neutral">{{ source.get('crawler_used') }}</span>{% endif %}
+        {% if source.get('mode') %}<span class="badge badge-neutral">{{ source.get('mode') }}</span>{% endif %}
       </div>
 
-      {% if source.url %}
-        <div class="text-xs text-muted font-mono mb-sm" style="word-break: break-all;">{{ source.url }}</div>
+      {% if source.get('url') %}
+        <div class="text-xs text-muted font-mono mb-sm" style="word-break: break-all;">{{ source.get('url') }}</div>
       {% endif %}
-      {% if source.error %}
-        <div class="code-block text-xs mb-md" style="color: var(--status-error); white-space: pre-wrap;">{{ source.error }}</div>
+      {% if source.get('error') %}
+        <div class="code-block text-xs mb-md" style="color: var(--status-error); white-space: pre-wrap;">{{ source.get('error') }}</div>
       {% endif %}
-      {% if source.diagnostic %}
-        <div class="code-block text-xs mb-md" style="color: var(--status-warning); white-space: pre-wrap;">{{ source.diagnostic }}</div>
+      {% if source.get('diagnostic') %}
+        <div class="code-block text-xs mb-md" style="color: var(--status-warning); white-space: pre-wrap;">{{ source.get('diagnostic') }}</div>
       {% endif %}
 
-      {% if source.search %}
+      {% if source.get('search') %}
       <details class="mb-md" open>
         <summary class="font-semibold">Ticketmaster Search</summary>
-        <pre class="code-block text-xs mt-sm">{{ source.search | tojson(indent=2) }}</pre>
+        <pre class="code-block text-xs mt-sm">{{ source.get('search') | tojson(indent=2) }}</pre>
       </details>
       {% endif %}
 
-      {% if source.events %}
+      {% if source.get('events') %}
       <details class="mb-md" open>
-        <summary class="font-semibold">Events Found ({{ source.events|length }})</summary>
+        <summary class="font-semibold">Events Found ({{ source.get('events', [])|length }})</summary>
         <div class="table-wrap mt-sm">
           <table>
             <thead>
@@ -61,14 +61,14 @@
               </tr>
             </thead>
             <tbody>
-              {% for event in source.events %}
+              {% for event in source.get('events', []) %}
               <tr>
-                <td><span class="badge badge-neutral">{{ event.process_result or 'raw' }}</span></td>
-                <td>{{ event.event_name }}</td>
-                <td class="font-mono">{{ event.date or event.event_date or 'TBD' }}</td>
-                <td>{{ event.venue }}</td>
-                <td>{{ event.city }}{% if event.region %}, {{ event.region }}{% endif %}</td>
-                <td class="text-xs text-muted">{{ event.evidence_text }}</td>
+                <td><span class="badge badge-neutral">{{ event.get('process_result') or 'raw' }}</span></td>
+                <td>{{ event.get('event_name', '') }}</td>
+                <td class="font-mono">{{ event.get('date') or event.get('event_date') or 'TBD' }}</td>
+                <td>{{ event.get('venue', '') }}</td>
+                <td>{{ event.get('city', '') }}{% if event.get('region') %}, {{ event.get('region') }}{% endif %}</td>
+                <td class="text-xs text-muted">{{ event.get('evidence_text', '') }}</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -77,35 +77,35 @@
       </details>
       {% endif %}
 
-      {% if source.llm %}
+      {% if source.get('llm') %}
       <details class="mb-md">
         <summary class="font-semibold">LLM Request</summary>
         <div class="text-xs text-muted mt-sm">
-          Model: <span class="font-mono">{{ source.llm.model }}</span> ·
-          Temperature: <span class="font-mono">{{ source.llm.temperature }}</span> ·
-          Input chars: <span class="font-mono">{{ source.llm.input_markdown_chars }}</span>
+          Model: <span class="font-mono">{{ source.get('llm', {}).get('model', 'n/a') }}</span> ·
+          Temperature: <span class="font-mono">{{ source.get('llm', {}).get('temperature', 'n/a') }}</span> ·
+          Input chars: <span class="font-mono">{{ source.get('llm', {}).get('input_markdown_chars', 0) }}</span>
         </div>
-        <pre class="code-block text-xs mt-sm" style="white-space: pre-wrap;">{{ source.llm.prompt }}</pre>
+        <pre class="code-block text-xs mt-sm" style="white-space: pre-wrap;">{{ source.get('llm', {}).get('prompt', '') }}</pre>
       </details>
 
       <details class="mb-md">
         <summary class="font-semibold">LLM Raw Response</summary>
-        <pre class="code-block text-xs mt-sm" style="white-space: pre-wrap;">{{ source.llm.raw_response_text or '' }}</pre>
+        <pre class="code-block text-xs mt-sm" style="white-space: pre-wrap;">{{ source.get('llm', {}).get('raw_response_text', '') }}</pre>
       </details>
 
       <details class="mb-md">
         <summary class="font-semibold">LLM Parsed Response</summary>
-        <pre class="code-block text-xs mt-sm">{{ source.llm.parsed_response | tojson(indent=2) }}</pre>
+        <pre class="code-block text-xs mt-sm">{{ source.get('llm', {}).get('parsed_response', {}) | tojson(indent=2) }}</pre>
       </details>
       {% endif %}
 
-      {% if source.cleaned_markdown_sample %}
+      {% if source.get('cleaned_markdown_sample') %}
       <details>
         <summary class="font-semibold">Cleaned Crawl Sample</summary>
         <div class="text-xs text-muted mt-sm">
-          Markdown chars: {{ source.markdown_chars }} · Cleaned chars: {{ source.cleaned_markdown_chars }}
+          Markdown chars: {{ source.get('markdown_chars', 0) }} · Cleaned chars: {{ source.get('cleaned_markdown_chars', 0) }}
         </div>
-        <pre class="code-block text-xs mt-sm" style="white-space: pre-wrap;">{{ source.cleaned_markdown_sample }}</pre>
+        <pre class="code-block text-xs mt-sm" style="white-space: pre-wrap;">{{ source.get('cleaned_markdown_sample', '') }}</pre>
       </details>
       {% endif %}
     </div>
