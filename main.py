@@ -30,6 +30,7 @@ logging.basicConfig(
         logging.FileHandler(LOG_DIR / "app.log"),
         logging.StreamHandler(),
     ],
+    force=True,
 )
 logger = logging.getLogger("tourtracker")
 
