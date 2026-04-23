@@ -104,6 +104,10 @@
           Model: <span class="font-mono">{{ source.get('llm', {}).get('model', 'n/a') }}</span> ·
           Temperature: <span class="font-mono">{{ source.get('llm', {}).get('temperature', 'n/a') }}</span> ·
           Input chars: <span class="font-mono">{{ source.get('llm', {}).get('input_markdown_chars', 0) }}</span>
+          {% if source.get('llm', {}).get('usage') %} ·
+          Tokens: <span class="font-mono">{{ source.get('llm', {}).get('usage', {}).get('input_tokens', 0) }}/{{ source.get('llm', {}).get('usage', {}).get('output_tokens', 0) }}</span> ·
+          Cost: <span class="font-mono">${{ '%.6f'|format(source.get('llm', {}).get('usage', {}).get('estimated_cost_usd', 0)) }}</span>{% if source.get('llm', {}).get('usage', {}).get('is_estimated') %} est{% endif %}
+          {% endif %}
           {% if source.get('llm', {}).get('fallback_used') %} ·
           Fallback: <span class="font-mono">{{ source.get('llm', {}).get('fallback_used') }}</span>
           {% endif %}

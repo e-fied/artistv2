@@ -12,6 +12,7 @@ from google.genai import types
 
 from app.config import AppSettings
 from app.schemas.gemini import ConfidenceLevel, ExtractedEvent, ExtractionResult
+from app.services.gemini_cost import usage_from_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,15 @@ Website Content:
             if response is None:
                 raise last_error or RuntimeError("Gemini request failed")
 
-            self.last_debug["raw_response_text"] = getattr(response, "text", None)
+            raw_response_text = getattr(response, "text", None)
+            self.last_debug["raw_response_text"] = raw_response_text
+            usage_estimate = usage_from_metadata(
+                self.last_debug.get("model"),
+                getattr(response, "usage_metadata", None),
+                len(prompt),
+                len(raw_response_text or ""),
+            )
+            self.last_debug["usage"] = usage_estimate.as_debug_dict()
             
             # The structured output is available in response.parsed
             if hasattr(response, 'parsed') and response.parsed:

@@ -41,10 +41,21 @@ def _sqlite_columns(table_name: str) -> set[str]:
 def ensure_sqlite_schema() -> None:
     """Apply lightweight SQLite column adds for small forward-only migrations."""
     artist_columns = _sqlite_columns("artists")
+    scan_source_result_columns = _sqlite_columns("scan_source_results")
 
     with engine.begin() as conn:
         if "paused_until_date" not in artist_columns:
             conn.execute(text("ALTER TABLE artists ADD COLUMN paused_until_date DATE"))
+        if "llm_model" not in scan_source_result_columns:
+            conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN llm_model VARCHAR(80)"))
+        if "llm_input_tokens" not in scan_source_result_columns:
+            conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN llm_input_tokens INTEGER DEFAULT 0"))
+        if "llm_output_tokens" not in scan_source_result_columns:
+            conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN llm_output_tokens INTEGER DEFAULT 0"))
+        if "llm_estimated_cost_usd" not in scan_source_result_columns:
+            conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN llm_estimated_cost_usd FLOAT DEFAULT 0.0"))
+        if "llm_cost_is_estimated" not in scan_source_result_columns:
+            conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN llm_cost_is_estimated BOOLEAN DEFAULT 1"))
 
 
 def get_db():

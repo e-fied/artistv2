@@ -12,7 +12,7 @@ from app.config import load_settings
 from app.database import get_db
 from app.models.artist import Artist, ArtistSource
 from app.models.event import Event
-from app.models.scan import ScanRun
+from app.models.scan import ScanRun, ScanSourceResult
 from app.services.artist_status import get_artist_coming_windows, resume_artists_ready_for_scan
 
 router = APIRouter()
@@ -55,6 +55,21 @@ def dashboard(request: Request, db: Session = Depends(get_db), view: str = "all"
         db.query(ScanRun)
         .order_by(ScanRun.started_at.desc())
         .first()
+    )
+    gemini_cost_total = (
+        db.query(func.coalesce(func.sum(ScanSourceResult.llm_estimated_cost_usd), 0.0))
+        .scalar()
+        or 0.0
+    )
+    gemini_input_tokens_total = (
+        db.query(func.coalesce(func.sum(ScanSourceResult.llm_input_tokens), 0))
+        .scalar()
+        or 0
+    )
+    gemini_output_tokens_total = (
+        db.query(func.coalesce(func.sum(ScanSourceResult.llm_output_tokens), 0))
+        .scalar()
+        or 0
     )
 
     # Per-artist source health summary
@@ -108,6 +123,9 @@ def dashboard(request: Request, db: Session = Depends(get_db), view: str = "all"
             "failing_sources": failing_sources,
             "last_scan": last_scan,
             "scan_interval_hours": settings.scan_interval_hours,
+            "gemini_cost_total": gemini_cost_total,
+            "gemini_input_tokens_total": gemini_input_tokens_total,
+            "gemini_output_tokens_total": gemini_output_tokens_total,
             "current_view": view,
             "now": datetime.now(),
         },

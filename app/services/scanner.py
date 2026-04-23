@@ -427,6 +427,7 @@ def _scan_single_artist(
                         f"{artist.name}: sending {len(cleaned_md)} cleaned chars to Gemini",
                     )
                     extraction = extractor.extract_events(cleaned_md, artist.name)
+                    _apply_llm_usage_to_source_result(source_result, extractor.last_debug)
                     processed_events = []
                     if extraction is not None:
                         source_result.events_extracted = len(extraction.events)
@@ -686,6 +687,16 @@ def _notify_source_health(settings, artist: Artist, source: ArtistSource, proble
         consecutive_failures=source.consecutive_failures,
     )
     send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, message)
+
+
+def _apply_llm_usage_to_source_result(source_result: ScanSourceResult, llm_debug: dict) -> None:
+    """Copy Gemini usage/cost debug details onto the persisted source result."""
+    usage = llm_debug.get("usage") or {}
+    source_result.llm_model = usage.get("model") or llm_debug.get("model")
+    source_result.llm_input_tokens = int(usage.get("input_tokens") or 0)
+    source_result.llm_output_tokens = int(usage.get("output_tokens") or 0)
+    source_result.llm_estimated_cost_usd = float(usage.get("estimated_cost_usd") or 0.0)
+    source_result.llm_cost_is_estimated = bool(usage.get("is_estimated", True))
 
 
 def _send_review_summary(db: Session, settings, total_possible: int) -> None:

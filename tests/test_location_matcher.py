@@ -25,13 +25,13 @@ def test_match_exact_city():
     assert match.reason == "exact_city"
 
 def test_match_alias_city():
-    profile = LocationProfile(id=1, name="Vancouver", radius_km=100)
+    profile = LocationProfile(id=1, name="Vancouver", radius_km=100, region_code="BC", country_code="CA")
     profile.aliases = [LocationAlias(alias_city="Burnaby")]
     
     match = match_event_to_locations(
         event_city="Burnaby",
-        event_region=None,
-        event_country=None,
+        event_region="BC",
+        event_country="CA",
         event_lat=None,
         event_lon=None,
         event_venue=None,
@@ -41,6 +41,22 @@ def test_match_alias_city():
     assert match.matched is True
     assert match.confidence == 0.95
     assert match.reason == "alias:Burnaby"
+
+def test_alias_city_does_not_cross_region_or_country():
+    profile = LocationProfile(id=1, name="Vancouver", radius_km=100, region_code="BC", country_code="CA")
+    profile.aliases = [LocationAlias(alias_city="Richmond")]
+
+    match = match_event_to_locations(
+        event_city="Richmond",
+        event_region="VA",
+        event_country="US",
+        event_lat=None,
+        event_lon=None,
+        event_venue="Dominion Energy Center",
+        profiles=[profile],
+    )
+
+    assert match is None
 
 def test_match_radius():
     profile = LocationProfile(id=1, name="Vancouver", latitude=49.2827, longitude=-123.1207, radius_km=50)

@@ -68,6 +68,11 @@ class ScanSourceResult(Base):
     content_changed: Mapped[bool] = mapped_column(Boolean, default=True)
     events_extracted: Mapped[int] = mapped_column(Integer, default=0)
     fetch_duration_seconds: Mapped[float] = mapped_column(Float, default=0.0)
+    llm_model: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    llm_input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    llm_output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    llm_estimated_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    llm_cost_is_estimated: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

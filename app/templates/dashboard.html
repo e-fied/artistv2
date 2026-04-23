@@ -46,6 +46,13 @@
       <div class="stat-value" style="color: {% if failing_sources > 0 %}var(--status-error){% else %}var(--text-muted){% endif %};">{{ failing_sources }}</div>
     </div>
     <div class="stat-card">
+      <div class="stat-label">All-time Gemini Estimate</div>
+      <div class="stat-value">${{ '%.4f'|format(gemini_cost_total or 0) }}</div>
+      <div class="stat-detail">
+        {{ "{:,}".format((gemini_input_tokens_total or 0)|int) }} in · {{ "{:,}".format((gemini_output_tokens_total or 0)|int) }} out
+      </div>
+    </div>
+    <div class="stat-card">
       <div class="stat-label">Scan Interval</div>
       <div class="stat-value">{{ scan_interval_hours }}h</div>
       <div class="stat-detail">

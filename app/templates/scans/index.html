@@ -90,6 +90,11 @@
                       mode={{ source.fetch_mode_used or 'n/a' }}
                       extracted={{ source.events_extracted }}
                       duration={{ '%.1f'|format(source.fetch_duration_seconds or 0) }}s
+                      {% if source.llm_model %}
+                        llm={{ source.llm_model }}
+                        tokens={{ source.llm_input_tokens or 0 }}/{{ source.llm_output_tokens or 0 }}
+                        cost=${{ '%.5f'|format(source.llm_estimated_cost_usd or 0) }}{% if source.llm_cost_is_estimated %} est{% endif %}
+                      {% endif %}
                     </span>
                     {% if source.fetch_error %}
                       <span style="color: {% if source.fetch_success %}var(--status-warning){% else %}var(--status-error){% endif %};">

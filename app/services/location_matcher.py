@@ -47,6 +47,25 @@ def _venue_alias_context_matches(
     return True
 
 
+def _alias_city_context_matches(
+    profile: LocationProfile,
+    event_region: Optional[str],
+    event_country: Optional[str],
+) -> bool:
+    """Trust city aliases only when available region/country context agrees."""
+    profile_country = _normalize_country(profile.country_code)
+    profile_region = _normalize_region(profile.region_code)
+    normalized_event_country = _normalize_country(event_country)
+    normalized_event_region = _normalize_region(event_region)
+
+    if profile_country and normalized_event_country and profile_country != normalized_event_country:
+        return False
+    if profile_region and normalized_event_region and profile_region != normalized_event_region:
+        return False
+
+    return True
+
+
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculate the great-circle distance between two points on Earth (in km)."""
     R = 6371.0  # Earth's radius in km
@@ -127,7 +146,7 @@ def match_event_to_locations(
                 city_lower == alias_lower
                 or alias_lower in city_lower
                 or city_lower in alias_lower
-            ):
+            ) and _alias_city_context_matches(profile, event_region, event_country):
                 return MatchResult(
                     matched=True,
                     reason=f"alias:{alias.alias_city}",
