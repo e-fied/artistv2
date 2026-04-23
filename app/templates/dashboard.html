@@ -59,11 +59,16 @@
   </div>
 
   <!-- Artists Grid -->
-  <div class="flex items-center justify-between mb-md animate-in stagger-2">
-    <h3 style="font-size: var(--text-lg); font-weight: 700; letter-spacing: -0.02em;">
-      Artists & Comedians
-    </h3>
-    <span class="text-xs text-muted font-mono">{{ artists|length }} tracked</span>
+  <div class="flex items-center justify-between mb-md animate-in stagger-2" style="flex-wrap: wrap; gap: var(--space-sm);">
+    <div class="flex items-center gap-sm" style="flex-wrap: wrap;">
+      <h3 style="font-size: var(--text-lg); font-weight: 700; letter-spacing: -0.02em;">
+        Artists & Comedians
+      </h3>
+      <a href="/?view=all" class="btn btn-ghost btn-sm {% if current_view == 'all' %}active{% endif %}">All</a>
+      <a href="/?view=coming" class="btn btn-ghost btn-sm {% if current_view == 'coming' %}active{% endif %}">Coming</a>
+      <a href="/?view=not_coming" class="btn btn-ghost btn-sm {% if current_view == 'not_coming' %}active{% endif %}">Not Coming</a>
+    </div>
+    <span class="text-xs text-muted font-mono">{{ artists|length }} shown</span>
   </div>
 
   {% if artists %}
@@ -81,6 +86,13 @@
       <div class="artist-meta">
         <span class="badge badge-type">{{ item.artist.artist_type }}</span>
         <span>{{ item.event_count }} event{{ 's' if item.event_count != 1 else '' }}</span>
+        {% if item.is_coming %}
+          <span style="color: var(--status-success);">
+            Coming {{ item.next_event_date.strftime('%b %d') if item.next_event_date else '' }}
+          </span>
+        {% else %}
+          <span class="text-muted">Not coming yet</span>
+        {% endif %}
         {% if not item.artist.ticketmaster_attraction_id %}
           <span style="color: var(--status-warning);">TM review</span>
         {% endif %}
@@ -124,6 +136,15 @@
         {% else %}
           Not checked yet
         {% endif %}
+        {% if item.artist.paused_until_date %}
+          <div class="mt-xs" style="color: var(--status-warning);">
+            Auto-resumes after {{ item.artist.paused_until_date.strftime('%b %d, %Y') }}
+          </div>
+        {% elif item.is_coming and item.last_event_date %}
+          <div class="mt-xs">
+            Run ends {{ item.last_event_date.strftime('%b %d, %Y') }}
+          </div>
+        {% endif %}
       </div>
 
       <div class="artist-actions">
@@ -139,6 +160,13 @@
             {% if item.artist.is_paused %}Resume{% else %}Pause{% endif %}
           </button>
         </form>
+        {% if item.is_coming %}
+        <form method="post" action="/artists/{{ item.artist.id }}/pause-until-passed" style="display:inline;">
+          <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-warning);">
+            Pause Until Passed
+          </button>
+        </form>
+        {% endif %}
         <form method="post" action="/artists/{{ item.artist.id }}/delete"
               onsubmit="return confirm('Delete {{ item.artist.name }}?')"
               style="display:inline; margin-left: auto;">

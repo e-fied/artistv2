@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from typing import Optional, List, Tuple
 
 from sqlalchemy.orm import Session
@@ -60,6 +61,7 @@ def match_event_to_locations(
     event_country: Optional[str],
     event_lat: Optional[float],
     event_lon: Optional[float],
+    event_venue: Optional[str],
     profiles: List[LocationProfile],
 ) -> Optional[MatchResult]:
     """Try to match an event's location against a list of location profiles.
@@ -75,6 +77,7 @@ def match_event_to_locations(
         return None
 
     city_lower = event_city.strip().lower() if event_city else ""
+    venue_lower = event_venue.strip().lower() if event_venue else ""
 
     best_match: Optional[MatchResult] = None
 
@@ -92,13 +95,26 @@ def match_event_to_locations(
 
         # 2. Alias match
         for alias in profile.aliases:
-            if city_lower and city_lower == alias.alias_city.strip().lower():
+            alias_lower = alias.alias_city.strip().lower()
+            if city_lower and (
+                city_lower == alias_lower
+                or alias_lower in city_lower
+                or city_lower in alias_lower
+            ):
                 return MatchResult(
                     matched=True,
                     reason=f"alias:{alias.alias_city}",
                     distance_km=None,
                     profile=profile,
                     confidence=0.95,
+                )
+            if venue_lower and alias_lower and re.search(rf"\b{re.escape(alias_lower)}\b", venue_lower):
+                return MatchResult(
+                    matched=True,
+                    reason=f"venue_alias:{alias.alias_city}",
+                    distance_km=None,
+                    profile=profile,
+                    confidence=0.9,
                 )
 
         # 3. Geo-radius match (if we have event coordinates)

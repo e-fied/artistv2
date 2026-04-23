@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import LOG_DIR, load_settings
-from app.database import Base, SessionLocal, engine
+from app.database import Base, SessionLocal, engine, ensure_sqlite_schema
 from app.seed import seed_locations
 
 # ---------------------------------------------------------------------------
@@ -49,6 +49,7 @@ async def lifespan(app: FastAPI):
     # Create tables (Alembic will handle migrations later, but this ensures
     # tables exist on first run or dev without Alembic)
     Base.metadata.create_all(bind=engine)
+    ensure_sqlite_schema()
 
     # Seed default data
     db = SessionLocal()

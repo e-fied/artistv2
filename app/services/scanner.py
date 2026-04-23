@@ -36,6 +36,7 @@ from app.services.notifier import (
 )
 from app.services.ticketmaster import TicketmasterClient
 from app.services.debug_capture import append_source_debug, init_scan_debug
+from app.services.artist_status import resume_artists_ready_for_scan
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ def scan_all_artists() -> None:
     db = SessionLocal()
     try:
         settings = load_settings()
+        resume_artists_ready_for_scan(db)
         artists = db.query(Artist).filter(Artist.is_paused == False).all()
 
         if not artists:
@@ -163,6 +165,42 @@ def _set_scan_progress(db: Session, scan_run_id: int, message: str) -> None:
     db.commit()
 
 
+def _search_ticketmaster_exact_matches(
+    client: TicketmasterClient,
+    attraction_id: str,
+    profiles: list,
+) -> list[dict]:
+    """Fetch exact-attraction events without geo clipping away valid nearby cities."""
+    events: list[dict] = []
+    country_codes = sorted(
+        {
+            (profile.country_code or "").strip().upper()
+            for profile in profiles
+            if getattr(profile, "country_code", None)
+        }
+    )
+
+    if country_codes:
+        for country_code in country_codes:
+            events.extend(
+                client.search_events_by_attraction(
+                    attraction_id=attraction_id,
+                    country_code=country_code,
+                    size=100,
+                )
+            )
+
+    if not events:
+        events.extend(
+            client.search_events_by_attraction(
+                attraction_id=attraction_id,
+                size=100,
+            )
+        )
+
+    return events
+
+
 def _scan_single_artist(
     db: Session,
     artist: Artist,
@@ -210,15 +248,13 @@ def _scan_single_artist(
             if artist.ticketmaster_attraction_id:
                 # Precise search by attraction ID
                 search_mode = "attraction_id"
-                for profile in profiles:
-                    latlong = f"{profile.latitude},{profile.longitude}"
-                    profile_events = client.search_events_by_attraction(
-                        attraction_id=artist.ticketmaster_attraction_id,
-                        latlong=latlong,
-                        radius=profile.radius_km,
-                        country_code=profile.country_code,
+                events.extend(
+                    _search_ticketmaster_exact_matches(
+                        client,
+                        artist.ticketmaster_attraction_id,
+                        profiles,
                     )
-                    events.extend(profile_events)
+                )
             else:
                 attraction_candidates = client.search_attractions(artist.name, size=8)
                 resolved_attraction = client.find_best_attraction_match(
@@ -230,15 +266,13 @@ def _scan_single_artist(
                     search_mode = "resolved_attraction_id"
                     artist.ticketmaster_attraction_id = resolved_attraction["id"]
                     artist.ticketmaster_attraction_name = resolved_attraction["name"]
-                    for profile in profiles:
-                        latlong = f"{profile.latitude},{profile.longitude}"
-                        profile_events = client.search_events_by_attraction(
-                            attraction_id=resolved_attraction["id"],
-                            latlong=latlong,
-                            radius=profile.radius_km,
-                            country_code=profile.country_code,
+                    events.extend(
+                        _search_ticketmaster_exact_matches(
+                            client,
+                            resolved_attraction["id"],
+                            profiles,
                         )
-                        events.extend(profile_events)
+                    )
                 else:
                     # Fallback: keyword search
                     for profile in profiles:
@@ -311,6 +345,7 @@ def _scan_single_artist(
                         "resolved_attraction_id": resolved_attraction["id"] if resolved_attraction else None,
                         "resolved_attraction_name": resolved_attraction["name"] if resolved_attraction else None,
                         "mode": search_mode,
+                        "query_strategy": "country_exact" if search_mode in {"attraction_id", "resolved_attraction_id"} else "geo_keyword",
                         "needs_review": bool(not artist.ticketmaster_attraction_id and search_mode == "keyword"),
                         "candidate_attractions": attraction_candidates[:5],
                         "keyword_fallback": None if artist.ticketmaster_attraction_id else artist.name,
@@ -540,6 +575,7 @@ def _process_event(
         event_country=country,
         event_lat=venue_lat,
         event_lon=venue_lon,
+        event_venue=event_data.get("venue", ""),
         profiles=profiles,
     )
 

@@ -12,6 +12,7 @@ from app.config import load_settings
 from app.database import get_db
 from app.models.artist import Artist, ArtistLocation, ArtistSource
 from app.models.location import LocationProfile
+from app.services.artist_status import pause_artist_until_past_events
 
 router = APIRouter(prefix="/artists")
 
@@ -137,6 +138,8 @@ def update_artist(
     artist.artist_type = artist_type
     artist.notes = notes.strip() or None
     artist.is_paused = is_paused
+    if not is_paused:
+        artist.paused_until_date = None
     artist.notify_enabled = notify_enabled
 
     # Update locations — clear and re-add
@@ -175,8 +178,19 @@ def toggle_pause(artist_id: int, db: Session = Depends(get_db)):
     artist = db.query(Artist).filter(Artist.id == artist_id).first()
     if artist:
         artist.is_paused = not artist.is_paused
+        if not artist.is_paused:
+            artist.paused_until_date = None
+        elif artist.paused_until_date:
+            artist.paused_until_date = None
         db.commit()
     return RedirectResponse(url="/", status_code=303)
+
+
+@router.post("/{artist_id}/pause-until-passed")
+def pause_until_passed(artist_id: int, db: Session = Depends(get_db)):
+    """Pause an artist until their current confirmed local dates have passed."""
+    pause_artist_until_past_events(db, artist_id)
+    return RedirectResponse(url="/?view=coming", status_code=303)
 
 
 # ── Scan ───────────────────────────────────────────────────────────

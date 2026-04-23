@@ -45,6 +45,9 @@
               <span class="text-sm">Notifications</span>
             </label>
           </div>
+          {% if artist and artist.paused_until_date %}
+          <div class="form-hint mt-sm">Smart pause is active until {{ artist.paused_until_date.strftime('%b %d, %Y') }}.</div>
+          {% endif %}
         </div>
         {% endif %}
       </div>
