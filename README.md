@@ -44,6 +44,8 @@ Built for self-hosting on an Unraid NAS (or any Docker host).
 ### 🔍 Intelligent Web Scraping
 Uses [Crawl4AI](https://github.com/unclecode/crawl4ai) — a self-hosted headless Chromium sidecar — to render JavaScript-heavy artist websites and extract their raw content as Markdown. Falls back to [Firecrawl](https://firecrawl.dev) (cloud API) automatically if the local crawler fails.
 
+For dynamic tour pages that only expose dates through client-side widgets or embedded APIs, Tour Tracker can enrich the crawled markdown with event data fetched directly from supported vendors such as Seated, Punchup, and Upnex / LeadConnector event portals before sending content to Gemini.
+
 ### 🤖 AI-Powered Extraction
 Leverages **Google Gemini 2.5 Flash** with structured JSON output (`response_schema`) to parse messy, inconsistent website text into clean event objects with dates, venues, cities, and ticket links. The schema guarantees parseable results — no regex hacks.
 
@@ -92,6 +94,8 @@ APScheduler runs scans at a configurable interval (default: every 6 hours). Supp
 6. **Deduplication** — known events are updated; new events are inserted with `confirmed` or `possible` status.
 7. **Notifications fire** — confirmed events trigger an instant Telegram message. Possible events are batched into a review summary.
 8. **You review** — open the dashboard to confirm, reject, or inspect events.
+
+When a site is mostly a shell page, the crawler may first append structured event data from supported widget vendors so Gemini sees the actual dates instead of just the shell copy.
 
 ---
 
@@ -618,6 +622,9 @@ Currently tested:
 ---
 
 ## Known Limitations & Gotchas
+
+- Some artist pages render a tour shell plus location-aware banner text like `NO SHOWS NEARBY` or `REQUEST A SHOW`, while the actual events are loaded later from an embedded API. In those cases, inspect the page source or Scan Debug output for vendor hints such as `initEvents(...)`, `eventPortalToken`, `locationId`, `eventsDataReady`, Seated widget ids, or Punchup API references.
+- For supported vendors, prefer fetching the underlying event API over trying to make Crawl4AI click more UI. The repo already includes fallbacks for Seated, Punchup, and Upnex / LeadConnector event portals.
 
 1. **Crawl4AI response format is inconsistent** — the `markdown` field can be a string OR a dict with `fit_markdown`/`raw` keys. The crawler service handles both (see `crawler.py`).
 

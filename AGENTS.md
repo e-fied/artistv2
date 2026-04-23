@@ -18,7 +18,8 @@ The app has recently been tuned for debugging crawl failures and dynamic tour pa
 
 - **Seated widget fallback is implemented.** Adam Ray's site exposed tour dates through `https://cdn.seated.com/api/tour/{uuid}?include=tour-events`. `CrawlerService` now detects Seated widget/Nuxt references, resolves the artist/tour id, fetches the Seated JSON:API endpoint, and appends those events to the crawl markdown before Gemini extraction.
 - **Punchup API fallback is implemented.** Timmy No Brakes' Punchup tour page (`https://punchup.live/timmynobrakes/tour`) rendered mostly as a Next.js shell to crawlers, while the actual dates came from `https://punchup.live/api/shows?comedianId={uuid}&startDatetime={iso}`. `CrawlerService` now detects Punchup pages, resolves the comedian id from embedded Next.js/RSC data, fetches the Punchup shows API, filters out shows hidden from that comedian page, and appends full tour events to the crawl markdown before Gemini extraction.
-- **Embedded event enrichers are isolated.** JSON-LD, Seated, and Punchup enrichment run independently, so one failing adapter should not prevent another adapter from appending events.
+- **Upnex / LeadConnector event portal fallback is implemented.** Ari Matti's site rendered a GoHighLevel shell and custom banner copy such as `NO SHOWS NEARBY`, but the real dates came from an inline `initEvents(...)` config that called `https://events-portal-sage.vercel.app/api/events/{locationId}` with an embedded bearer token. `CrawlerService` now detects that config, fetches the Upnex event payload, and appends those live events to the crawl markdown before Gemini extraction.
+- **Embedded event enrichers are isolated.** JSON-LD, Seated, Punchup, and Upnex enrichment run independently, so one failing adapter should not prevent another adapter from appending events.
 - **Crawler diagnostics are implemented.** If a page crawls successfully but no events are extracted, the crawler diagnoses likely causes such as very little page text, bot blocking, blank pages, JSON-LD-only events, or dates rendered after load.
 - **Opt-in scan debug artifacts are implemented.** Settings → Scan Debugging can capture prompts, Gemini raw/parsed responses, cleaned crawl samples, Ticketmaster candidates, and processed events to `data/debug/scan_{scan_run_id}.json`.
 - **Scan History shows live progress.** Running scans update a progress message such as "checking Ticketmaster", "crawling URL", or "sending cleaned chars to Gemini", and the Scan History table auto-refreshes while scans are running.
@@ -27,7 +28,7 @@ The app has recently been tuned for debugging crawl failures and dynamic tour pa
 - **Timezone display is Vancouver-local.** Templates use the `localtime` Jinja filter from `main.py`; stored DB timestamps are UTC-ish/naive, displayed in `America/Vancouver` by default.
 - **Location lat/lon can be inferred for known cities.** Location forms can geocode common city names/fallback known cities such as Denver, so the user does not have to manually know latitude/longitude.
 - **Sidebar links use trailing slashes.** Routes mounted at prefixes like `/scans`, `/locations`, `/logs`, `/settings` define `@router.get("/")`; nav links should use `/scans/`, `/locations/`, `/logs/`, `/settings/` to avoid HTMX boosted redirect weirdness.
-- **Recent relevant commits:** `d46fa72 Isolate embedded event enrichment adapters`, `a4e50e8 Add Punchup tour API fallback`, `c1716ec Notify source health problems`, `22d73f6 Fix settings save and scan progress`, `a71f6b0 Add opt-in scan debug artifacts`, `b62d0f8 Improve scan debugging and location entry`, `a4bc5e6 Add crawler diagnostics for empty tour pages`, `aaaf1a6 Add Seated widget tour fallback`.
+- **Recent relevant commits:** `f558337 Add Upnex event portal crawler fallback`, `d46fa72 Isolate embedded event enrichment adapters`, `a4e50e8 Add Punchup tour API fallback`, `c1716ec Notify source health problems`, `22d73f6 Fix settings save and scan progress`, `a71f6b0 Add opt-in scan debug artifacts`, `b62d0f8 Improve scan debugging and location entry`, `a4bc5e6 Add crawler diagnostics for empty tour pages`, `aaaf1a6 Add Seated widget tour fallback`.
 
 ---
 
@@ -147,7 +148,7 @@ APScheduler (every N hours)
        │    │
        │    ├─▶ [Web Sources] (official_website, manual_url)
        │    │    ├─ CrawlerService.fetch_markdown() → tries Crawl4AI sidecar, falls back to Firecrawl
-       │    │    ├─ CrawlerService optionally enriches markdown with JSON-LD/Event data, Seated widget API events, and Punchup shows API events
+       │    │    ├─ CrawlerService optionally enriches markdown with JSON-LD/Event data, Seated widget API events, Punchup shows API events, and Upnex event portal API events
        │    │    ├─ CrawlerService.clean_markdown() → strip boilerplate, cap at 50k chars
        │    │    └─ ExtractorService.extract_events() → Gemini 2.5 Flash structured JSON output
        │    │
@@ -237,7 +238,9 @@ Common source warning text:
 
 `Crawler returned very little page text. The page may be blank, blocked, or rendering tour dates after load.`
 
-This means the crawler received too little useful page text for trustworthy extraction. It can be caused by JavaScript-rendered dates after load, bot-blocking, cookie/geo gates, or a site that uses an embedded API. For Seated widgets, check whether the fallback found and appended events from `cdn.seated.com/api/tour/...`. For Punchup pages, check whether the fallback found a comedian id and appended events from `punchup.live/api/shows`.
+This means the crawler received too little useful page text for trustworthy extraction. It can be caused by JavaScript-rendered dates after load, bot-blocking, cookie/geo gates, or a site that uses an embedded API. For Seated widgets, check whether the fallback found and appended events from `cdn.seated.com/api/tour/...`. For Punchup pages, check whether the fallback found a comedian id and appended events from `punchup.live/api/shows`. For Upnex / LeadConnector event pages, inspect the cleaned crawl sample for `initEvents(...)`, `eventPortalToken`, `locationId`, `events.js`, `eventsDataReady`, or banner copy like `NO SHOWS NEARBY`; those are signs the visible page is a shell and the real shows come from `events-portal-sage.vercel.app/api/events/{locationId}`.
+
+When a site looks like a shell but still contains inline widget config, prefer extracting the vendor config and calling the same event API over trying to click/scroll more in Crawl4AI. That pattern was the fix for Ari Matti.
 
 ### 4.6 Telegram Notification Types
 
@@ -492,11 +495,11 @@ python -m pytest tests/ -v
 
 1. **Crawl4AI response format is inconsistent** — The `markdown` field can be a string OR a dict with `fit_markdown`/`raw` keys. The crawler service handles both cases (`crawler.py` lines 85-93). Always check the type.
 
-2. **Dynamic tour pages may need embedded API fallbacks** — Crawl4AI may see a shell page while dates arrive later via XHR/widget JS. Before assuming Gemini failed, inspect Scan Debug and page scripts/network clues. Seated and Punchup are currently handled by dedicated fallbacks; other vendors may need similar adapters.
+2. **Dynamic tour pages may need embedded API fallbacks** — Crawl4AI may see a shell page while dates arrive later via XHR/widget JS. Before assuming Gemini failed, inspect Scan Debug and page scripts/network clues. Seated, Punchup, and Upnex / LeadConnector event portals are currently handled by dedicated fallbacks; other vendors may need similar adapters.
 
-3. **"See All" buttons often hide already-fetched data** — Some artist pages initially render only a handful of shows and require clicking labels such as "See All (84)" in the browser. For Punchup, the full show list already comes from `/api/shows`; the button is client-side display logic, so the API fallback is more reliable than trying to make Crawl4AI click it. For new vendors, inspect the network/API data before adding click automation.
+3. **"See All" buttons often hide already-fetched data** — Some artist pages initially render only a handful of shows and require clicking labels such as "See All (84)" in the browser. For Punchup, the full show list already comes from `/api/shows`; the button is client-side display logic, so the API fallback is more reliable than trying to make Crawl4AI click it. For Upnex / LeadConnector pages, the banner and forms may react to `eventsDataReady`, but the actual show list still comes from the event portal API. For new vendors, inspect the network/API data before adding click automation.
 
-4. **Very little page text warning** — This is a crawler/content warning, not just an LLM miss. It means there was not enough text to confidently extract events. Check `Cleaned Crawl Sample` in Scan Debug and consider direct API/widget fallbacks.
+4. **Very little page text warning** — This is a crawler/content warning, not just an LLM miss. It means there was not enough text to confidently extract events. Check `Cleaned Crawl Sample` in Scan Debug and consider direct API/widget fallbacks. If the sample contains phrases like `NO SHOWS NEARBY` or `REQUEST A SHOW`, that may be banner copy from a location-aware widget rather than proof that the artist has no events.
 
 5. **SQLite concurrency** — Despite WAL mode, long-running transactions can still cause issues. The scanner opens its own `SessionLocal()` and commits frequently. Don't hold transactions open across HTTP calls or sleep periods.
 
