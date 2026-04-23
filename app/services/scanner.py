@@ -434,7 +434,7 @@ def _scan_single_artist(
                             "crawler_used": crawler_used,
                             "markdown_chars": len(markdown),
                             "cleaned_markdown_chars": len(cleaned_md),
-                            "cleaned_markdown_sample": cleaned_md[:5000],
+                            "cleaned_markdown_sample": cleaned_md,
                             "llm": extractor.last_debug,
                             "events_extracted": source_result.events_extracted,
                             "events": processed_events,

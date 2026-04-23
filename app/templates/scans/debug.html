@@ -84,13 +84,16 @@
           Model: <span class="font-mono">{{ source.get('llm', {}).get('model', 'n/a') }}</span> ·
           Temperature: <span class="font-mono">{{ source.get('llm', {}).get('temperature', 'n/a') }}</span> ·
           Input chars: <span class="font-mono">{{ source.get('llm', {}).get('input_markdown_chars', 0) }}</span>
+          {% if source.get('llm', {}).get('fallback_used') %} ·
+          Fallback: <span class="font-mono">{{ source.get('llm', {}).get('fallback_used') }}</span>
+          {% endif %}
         </div>
         <pre class="code-block text-xs mt-sm" style="white-space: pre-wrap;">{{ source.get('llm', {}).get('prompt', '') }}</pre>
       </details>
 
       <details class="mb-md">
         <summary class="font-semibold">LLM Raw Response</summary>
-        <pre class="code-block text-xs mt-sm" style="white-space: pre-wrap;">{{ source.get('llm', {}).get('raw_response_text', '') }}</pre>
+        <pre class="code-block text-xs mt-sm" style="white-space: pre-wrap;">{{ source.get('llm', {}).get('raw_response_text') or '[empty response text]' }}</pre>
       </details>
 
       <details class="mb-md">
@@ -101,7 +104,7 @@
 
       {% if source.get('cleaned_markdown_sample') %}
       <details>
-        <summary class="font-semibold">Cleaned Crawl Sample</summary>
+        <summary class="font-semibold">Cleaned Crawl Content</summary>
         <div class="text-xs text-muted mt-sm">
           Markdown chars: {{ source.get('markdown_chars', 0) }} · Cleaned chars: {{ source.get('cleaned_markdown_chars', 0) }}
         </div>
