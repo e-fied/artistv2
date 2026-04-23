@@ -90,7 +90,7 @@ def test_match_alias_city_partial_name():
     assert match.reason == "alias:Rama"
 
 def test_match_alias_from_venue_name():
-    profile = LocationProfile(id=1, name="Toronto", radius_km=50)
+    profile = LocationProfile(id=1, name="Toronto", radius_km=50, region_code="ON", country_code="CA")
     profile.aliases = [LocationAlias(alias_city="Rama")]
 
     match = match_event_to_locations(
@@ -105,3 +105,18 @@ def test_match_alias_from_venue_name():
     assert match is not None
     assert match.matched is True
     assert match.reason == "venue_alias:Rama"
+
+def test_venue_alias_does_not_cross_region():
+    profile = LocationProfile(id=1, name="Vancouver", radius_km=50, region_code="BC", country_code="CA")
+    profile.aliases = [LocationAlias(alias_city="Delta")]
+
+    match = match_event_to_locations(
+        event_city="Fredericton",
+        event_region="NB",
+        event_country="CA",
+        event_lat=None,
+        event_lon=None,
+        event_venue="Delta Ballroom",
+        profiles=[profile]
+    )
+    assert match is None
