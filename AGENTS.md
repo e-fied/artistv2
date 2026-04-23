@@ -23,12 +23,17 @@ The app has recently been tuned for debugging crawl failures and dynamic tour pa
 - **Crawler diagnostics are implemented.** If a page crawls successfully but no events are extracted, the crawler diagnoses likely causes such as very little page text, bot blocking, blank pages, JSON-LD-only events, or dates rendered after load.
 - **Opt-in scan debug artifacts are implemented.** Settings → Scan Debugging can capture prompts, Gemini raw/parsed responses, cleaned crawl samples, Ticketmaster candidates, and processed events to `data/debug/scan_{scan_run_id}.json`.
 - **Scan History shows live progress.** Running scans update a progress message such as "checking Ticketmaster", "crawling URL", or "sending cleaned chars to Gemini", and the Scan History table auto-refreshes while scans are running.
+- **Dashboard "Coming / Not Coming" filters and smart pause are implemented.** The dashboard can filter artists by whether they have future confirmed local events. Artists that are currently coming can be paused with `Pause Until Passed`, which stores a `paused_until_date` and auto-resumes them after the last current confirmed local date has passed.
 - **Source Health can link to debug artifacts.** Failing sources show `Latest Debug` when a debug artifact exists for their latest scan result. If none exists, enable Scan Debugging and force retry.
 - **Source Health Telegram alerts are implemented.** Settings → Notifications has `Notify on source health problems`; when enabled, crawler/API warnings are sent to Telegram with artist, source type, URL, notice count, and warning text.
+- **Ticketmaster review workflow is implemented.** Artists with no saved Ticketmaster attraction are flagged with `TM review`; new artists are redirected to their edit page after creation, Source Health can show `Needs Review`, and scan debug can offer one-click `Use This Attraction` actions from candidate attractions.
+- **Gemini model fallback is implemented.** Extraction tries `gemini-flash-lite-latest` first, then falls back through `gemini-2.5-flash-lite`, `gemini-flash-latest`, and `gemini-2.5-flash`.
+- **Ticketmaster exact-attraction search now queries by country first.** When an artist has a resolved Ticketmaster attraction ID, scans fetch exact-attraction events by country and let the location matcher decide relevance. This avoids geo-filtering away valid nearby-city cases like Tony Hinchcliffe at `Rama, ON`.
+- **Location matching has venue-alias guardrails.** `location_matcher` can use venue-name aliases for cases like `Casino Rama Resort`, but only when the event region/country matches the tracked location context. This prevents cross-country false positives such as `Delta Ballroom` in Fredericton, NB matching Vancouver-area `Delta`.
 - **Timezone display is Vancouver-local.** Templates use the `localtime` Jinja filter from `main.py`; stored DB timestamps are UTC-ish/naive, displayed in `America/Vancouver` by default.
 - **Location lat/lon can be inferred for known cities.** Location forms can geocode common city names/fallback known cities such as Denver, so the user does not have to manually know latitude/longitude.
 - **Sidebar links use trailing slashes.** Routes mounted at prefixes like `/scans`, `/locations`, `/logs`, `/settings` define `@router.get("/")`; nav links should use `/scans/`, `/locations/`, `/logs/`, `/settings/` to avoid HTMX boosted redirect weirdness.
-- **Recent relevant commits:** `f558337 Add Upnex event portal crawler fallback`, `d46fa72 Isolate embedded event enrichment adapters`, `a4e50e8 Add Punchup tour API fallback`, `c1716ec Notify source health problems`, `22d73f6 Fix settings save and scan progress`, `a71f6b0 Add opt-in scan debug artifacts`, `b62d0f8 Improve scan debugging and location entry`, `a4bc5e6 Add crawler diagnostics for empty tour pages`, `aaaf1a6 Add Seated widget tour fallback`.
+- **Recent relevant commits:** `84a325c Tighten venue alias location matching`, `e5a4331 Fix dashboard artist action wrapping`, `68e4547 Add smart artist pausing and broader location matching`, `6af5465 Add Ticketmaster review prompts and debug linking`, `970ac29 Improve Gemini fallback and Ticketmaster matching`, `f558337 Add Upnex event portal crawler fallback`, `d46fa72 Isolate embedded event enrichment adapters`, `a4e50e8 Add Punchup tour API fallback`, `c1716ec Notify source health problems`, `22d73f6 Fix settings save and scan progress`.
 
 ---
 
@@ -82,6 +87,7 @@ artistv2/
 │   │
 │   ├── services/               # Business logic (no HTTP/routing concerns)
 │   │   ├── __init__.py
+│   │   ├── artist_status.py    # Coming/not-coming helpers, smart pause auto-resume
 │   │   ├── scanner.py          # Main scan orchestrator: scan_all_artists(), _scan_single_artist()
 │   │   ├── crawler.py          # CrawlerService: Crawl4AI → Firecrawl fallback, markdown cleaning
 │   │   ├── debug_capture.py    # Opt-in JSON scan debug artifacts under data/debug/
@@ -94,7 +100,7 @@ artistv2/
 │   │
 │   ├── routes/                 # FastAPI routers (thin controllers, delegate to services)
 │   │   ├── __init__.py
-│   │   ├── dashboard.py        # GET / — main dashboard
+│   │   ├── dashboard.py        # GET / — main dashboard + Coming/Not Coming filtering
 │   │   ├── artists.py          # CRUD for artists, TM search, auto-find
 │   │   ├── events.py           # Event listing, filtering, status updates
 │   │   ├── locations.py        # Location profile CRUD + alias management
@@ -129,7 +135,8 @@ artistv2/
 └── tests/
     ├── test_crawler_punchup.py # Punchup API fallback/id parsing tests
     ├── test_dedup.py           # Dedup key generation tests
-    └── test_location_matcher.py # Haversine + matching tests
+    ├── test_location_matcher.py # Haversine + alias/venue-guardrail tests
+    └── test_scanner_ticketmaster.py # Ticketmaster exact-attraction query strategy tests
 ```
 
 ---
@@ -176,6 +183,7 @@ APScheduler (every N hours)
 - **Settings layering** — Secrets come from `.env` (env vars), non-secret preferences are persisted to `data/settings.json` from the UI.
 - **Debug artifacts are file-based, not DB rows** — `app/services/debug_capture.py` writes `data/debug/scan_{id}.json`; it scrubs obvious API key fields and truncates giant strings.
 - **Source warnings are not necessarily fatal** — A source can have `fetch_success=True` but still carry a diagnostic in `fetch_error` when the page crawled but produced no events or very little usable text.
+- **Small forward-only SQLite schema fixes happen at startup** — `ensure_sqlite_schema()` in `app/database.py` adds lightweight columns such as `artists.paused_until_date` without Alembic for these small changes.
 
 ### 4.3 Database Models (ERD Summary)
 
@@ -231,7 +239,7 @@ Use this workflow when the user asks "what did Crawl4AI return?", "why did Sourc
    - `LLM Raw Response`: raw Gemini response text.
    - `LLM Parsed Response`: structured schema parse.
    - `Events Found`: raw event data plus `process_result` such as `confirmed`, `possible`, `existing`, or `no_match`.
-   - Ticketmaster debug: attraction/keyword mode, searched profiles, returned candidates, and process results.
+   - Ticketmaster debug: attraction/keyword mode, query strategy (`country_exact` vs `geo_keyword`), searched profiles, returned candidates, and process results.
 5. Turn debug capture off after testing so `data/debug` does not grow unnecessarily. Retention is controlled by `debug_scan_retention`.
 
 Common source warning text:
@@ -511,13 +519,15 @@ python -m pytest tests/ -v
 
 9. **Dedup key does not include time** — Two events at the same venue on the same date but different times will collide. This is intentional (most artists don't do two shows at the same venue on the same day).
 
-10. **The `data/` directory is git-ignored** — The database, logs, settings.json, and debug artifacts are never committed. They persist on the Unraid server via the Docker volume mount.
+10. **Dedup key still includes city** — If different sources report the same venue/date using different nearby-city labels such as `Rama` vs `Orillia`, they can still create parallel rows until a future dedup normalization change is added.
 
-11. **Settings booleans default false in forms** — FastAPI checkbox fields use `Form(False)`. If adding a new checkbox, add it to `AppSettings`, `settings_routes.update_settings()`, and `settings/index.html`.
+11. **The `data/` directory is git-ignored** — The database, logs, settings.json, and debug artifacts are never committed. They persist on the Unraid server via the Docker volume mount.
 
-12. **Source health notices increment on diagnostics** — `consecutive_failures` may increment for "no events / suspicious crawl" diagnostics, even when HTTP fetching technically succeeded. Source Health is meant to expose these as attention items.
+12. **Settings booleans default false in forms** — FastAPI checkbox fields use `Form(False)`. If adding a new checkbox, add it to `AppSettings`, `settings_routes.update_settings()`, and `settings/index.html`.
 
-13. **HTMX boosted links and redirects** — Because `hx-boost` is on `<body>`, avoid relying on slash redirects for navigation or forms. Use exact route URLs.
+13. **Source health notices increment on diagnostics** — `consecutive_failures` may increment for "no events / suspicious crawl" diagnostics, even when HTTP fetching technically succeeded. Source Health is meant to expose these as attention items.
+
+14. **HTMX boosted links and redirects** — Because `hx-boost` is on `<body>`, avoid relying on slash redirects for navigation or forms. Use exact route URLs.
 
 ---
 

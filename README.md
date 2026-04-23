@@ -47,13 +47,13 @@ Uses [Crawl4AI](https://github.com/unclecode/crawl4ai) — a self-hosted headles
 For dynamic tour pages that only expose dates through client-side widgets or embedded APIs, Tour Tracker can enrich the crawled markdown with event data fetched directly from supported vendors such as Seated, Punchup, and Upnex / LeadConnector event portals before sending content to Gemini.
 
 ### 🤖 AI-Powered Extraction
-Leverages **Google Gemini 2.5 Flash** with structured JSON output (`response_schema`) to parse messy, inconsistent website text into clean event objects with dates, venues, cities, and ticket links. The schema guarantees parseable results — no regex hacks.
+Leverages **Google Gemini** with structured JSON output (`response_schema`) to parse messy, inconsistent website text into clean event objects with dates, venues, cities, and ticket links. The extractor now tries cheaper flash-lite models first and falls back to stronger flash models if needed. The schema guarantees parseable results — no regex hacks.
 
 ### 🎯 Auto-Discovery
 Automatically locates an artist's official tour page using Gemini with **Google Search Grounding**. Just add an artist name and Tour Tracker will find their website for you.
 
 ### 🎫 Ticketmaster Integration
-Queries the **Ticketmaster Discovery API** by either attraction ID (precise) or keyword (fallback) to find upcoming events. Geo-filters results against your location profiles with configurable radius.
+Queries the **Ticketmaster Discovery API** by either attraction ID (precise) or keyword (fallback) to find upcoming events. Artists without a locked attraction can be flagged for Ticketmaster review, and exact-attraction searches now fetch by country first so nearby-city cases are not filtered out too early.
 
 ### 📍 Location-Based Matching
 A three-tier matching system determines whether a discovered event is "near" you:
@@ -61,6 +61,8 @@ A three-tier matching system determines whether a discovered event is "near" you
 1. **Exact city match** → confidence `1.0`
 2. **Alias match** (e.g. "Burnaby" → "Vancouver") → confidence `0.95`
 3. **Haversine geo-radius** (lat/lon distance calculation) → confidence `0.7–1.0` scaled by proximity
+
+Venue-name aliases are supported for tricky cases like `Casino Rama Resort`, but only when the event is in the same region/country context as the tracked location to avoid cross-country false positives.
 
 ### 🔁 Idempotent Deduplication
 SHA-256 hashing of `artist_id|event_name|venue|city|date` prevents duplicate entries. Re-discoveries of the same event update mutable fields (ticket URL, evidence) but **never downgrade** status — once an event is confirmed, it stays confirmed.
@@ -70,7 +72,7 @@ Instant HTML-formatted alerts when new confirmed events are found near your loca
 
 ### 📊 Full Dashboard
 A server-rendered web UI with:
-- **Dashboard** — aggregate stats, per-artist health summaries, last scan time
+- **Dashboard** — aggregate stats, per-artist health summaries, last scan time, `Coming / Not Coming` filters, and smart pause actions
 - **Events** — filterable list of all discovered events, status badges
 - **Review inbox** — confirm or reject "possible" events manually
 - **Scan history** — detailed logs of every scan run with per-source results
@@ -87,7 +89,7 @@ APScheduler runs scans at a configurable interval (default: every 6 hours). Supp
 ## How It Works
 
 1. **You add artists** — provide a name and optionally link their Ticketmaster attraction ID or official website URL. Or let Auto-Discovery find their site.
-2. **The scheduler fires** — every N hours, the scan pipeline runs for all non-paused artists.
+2. **The scheduler fires** — every N hours, the scan pipeline runs for all non-paused artists. Artists paused with `Pause Until Passed` auto-resume after their current local run has passed.
 3. **Data sources are queried** — Ticketmaster API, crawled websites, and manual URLs are all checked.
 4. **Events are extracted** — Gemini parses raw web content into structured event data.
 5. **Location matching** — each event is checked against your location profiles (city names, aliases, geo-radius).
