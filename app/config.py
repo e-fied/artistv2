@@ -38,6 +38,7 @@ class AppSettings(BaseModel):
     firecrawl_api_key: Optional[str] = None
     telegram_bot_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
+    public_app_url: str = Field(default="https://artist.fied.ca")
 
     # --- Crawl4AI ---
     crawl4ai_base_url: str = Field(
@@ -113,6 +114,7 @@ def _settings_from_env() -> dict:
         "firecrawl_api_key": os.getenv("FIRECRAWL_API_KEY"),
         "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN"),
         "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID"),
+        "public_app_url": os.getenv("PUBLIC_APP_URL", "https://artist.fied.ca"),
         "crawl4ai_base_url": os.getenv("CRAWL4AI_BASE_URL", "http://crawl4ai:11235"),
     }
 

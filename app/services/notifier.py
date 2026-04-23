@@ -78,6 +78,7 @@ def format_event_notification(
 def format_review_summary(
     possible_count: int,
     artist_summaries: list,
+    review_url: Optional[str] = None,
 ) -> str:
     """Format a summary of possible events needing review."""
     lines = [
@@ -93,7 +94,10 @@ def format_review_summary(
         )
 
     lines.append("")
-    lines.append("Open the Review Inbox to confirm or reject.")
+    if review_url:
+        lines.append(f'Open the <a href="{escape(review_url, quote=True)}">Review Inbox</a> to confirm or reject.')
+    else:
+        lines.append("Open the Review Inbox to confirm or reject.")
 
     return "\n".join(lines)
 

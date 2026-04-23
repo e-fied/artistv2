@@ -7,6 +7,8 @@ Falls back to keyword search for attraction discovery.
 from __future__ import annotations
 
 import logging
+import re
+import unicodedata
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 
@@ -73,6 +75,30 @@ class TicketmasterClient:
         except Exception as e:
             logger.error(f"Ticketmaster attraction search error: {e}")
             return []
+
+    def find_best_attraction_match(
+        self,
+        artist_name: str,
+        artist_type: Optional[str] = None,
+        size: int = 10,
+    ) -> Optional[Dict[str, Any]]:
+        """Find a strong attraction match for an artist by normalized exact name."""
+        attractions = self.search_attractions(artist_name, size=size)
+        target = self._normalize_name(artist_name)
+        if not target:
+            return None
+
+        exact_matches = [
+            attraction for attraction in attractions
+            if self._normalize_name(attraction.get("name", "")) == target
+        ]
+        if artist_type:
+            exact_matches = [
+                attraction for attraction in exact_matches
+                if self._attraction_matches_artist_type(attraction, artist_type)
+            ] or exact_matches
+
+        return exact_matches[0] if exact_matches else None
 
     # ── Event Search ───────────────────────────────────────────────────
 
@@ -141,6 +167,8 @@ class TicketmasterClient:
     def search_events_by_keyword(
         self,
         keyword: str,
+        artist_name: Optional[str] = None,
+        artist_type: Optional[str] = None,
         latlong: Optional[str] = None,
         radius: Optional[int] = None,
         country_code: Optional[str] = None,
@@ -174,6 +202,8 @@ class TicketmasterClient:
             events_raw = data.get("_embedded", {}).get("events", [])
             events = []
             for e in events_raw:
+                if artist_name and not self._event_matches_artist(e, artist_name, artist_type):
+                    continue
                 event = self._parse_event(e)
                 if event:
                     events.append(event)
@@ -213,10 +243,13 @@ class TicketmasterClient:
 
             # Event name
             event_name = raw.get("name", "")
+            attractions = raw.get("_embedded", {}).get("attractions", [])
+            attraction_names = [a.get("name", "") for a in attractions if a.get("name")]
 
             return {
                 "ticketmaster_event_id": raw.get("id", ""),
                 "event_name": event_name,
+                "attraction_names": attraction_names,
                 "venue": venue_name,
                 "city": city,
                 "region": region,
@@ -241,3 +274,62 @@ class TicketmasterClient:
             if img.get("ratio") == "16_9":
                 return img.get("url", "")
         return images[0].get("url", "") if images else ""
+
+    def _event_matches_artist(
+        self,
+        raw_event: Dict[str, Any],
+        artist_name: str,
+        artist_type: Optional[str],
+    ) -> bool:
+        """Filter loose keyword matches so ambiguous artist names don't explode."""
+        normalized_artist = self._normalize_name(artist_name)
+        artist_tokens = self._meaningful_tokens(artist_name)
+
+        attractions = raw_event.get("_embedded", {}).get("attractions", [])
+        attraction_names = [attraction.get("name", "") for attraction in attractions if attraction.get("name")]
+        normalized_attractions = [self._normalize_name(name) for name in attraction_names]
+
+        if any(name == normalized_artist for name in normalized_attractions):
+            if not artist_type:
+                return True
+            return any(
+                self._attraction_matches_artist_type(
+                    {
+                        "segment": attraction.get("classifications", [{}])[0].get("segment", {}).get("name", ""),
+                        "genre": attraction.get("classifications", [{}])[0].get("genre", {}).get("name", ""),
+                    },
+                    artist_type,
+                )
+                for attraction in attractions
+            ) or True
+
+        # Single-word artists like ROSÉ need an exact attraction match to avoid
+        # broad keyword collisions like Guns N' Roses, Rose Gray, sports teams, etc.
+        if len(artist_tokens) <= 1:
+            return False
+
+        combined_text = " ".join([raw_event.get("name", ""), *attraction_names])
+        combined_tokens = set(self._meaningful_tokens(combined_text))
+        if not artist_tokens:
+            return False
+        return all(token in combined_tokens for token in artist_tokens)
+
+    def _attraction_matches_artist_type(self, attraction: Dict[str, Any], artist_type: str) -> bool:
+        segment = self._normalize_name(attraction.get("segment", ""))
+        genre = self._normalize_name(attraction.get("genre", ""))
+        if artist_type == "comedy":
+            return "comedy" in segment or "comedy" in genre
+        if artist_type == "music":
+            return "music" in segment
+        return True
+
+    def _meaningful_tokens(self, value: str) -> List[str]:
+        normalized = self._normalize_name(value)
+        stopwords = {"the", "a", "an", "and", "with", "of", "live", "tour", "world"}
+        return [token for token in normalized.split() if token and token not in stopwords]
+
+    def _normalize_name(self, value: str) -> str:
+        ascii_text = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+        ascii_text = ascii_text.lower()
+        ascii_text = re.sub(r"[^a-z0-9]+", " ", ascii_text)
+        return re.sub(r"\s+", " ", ascii_text).strip()

@@ -15,6 +15,13 @@ from app.models.artist import Artist, ArtistSource
 
 logger = logging.getLogger(__name__)
 
+MODEL_CANDIDATES = [
+    "gemini-flash-lite-latest",
+    "gemini-2.5-flash-lite",
+    "gemini-flash-latest",
+    "gemini-2.5-flash",
+]
+
 
 class AutoFindResult(BaseModel):
     """The structured result of our LLM search for an official tour site."""
@@ -53,16 +60,27 @@ Prioritize their official personal website (e.g. artistname.com/tour).
 Return the exact URL and evaluate your confidence (high if it's clearly their main official site, low if unsure or it's a generic aggregator).
 """
 
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=AutoFindResult,
-                temperature=0.0,
-                tools=[{"google_search": {}}],  # Enable Google Search Grounding
-            ),
-        )
+        response = None
+        last_error = None
+        for model in MODEL_CANDIDATES:
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=AutoFindResult,
+                        temperature=0.0,
+                        tools=[{"google_search": {}}],  # Enable Google Search Grounding
+                    ),
+                )
+                break
+            except Exception as e:
+                last_error = e
+                logger.warning("Gemini model %s failed during auto-find, trying fallback: %s", model, e)
+
+        if response is None:
+            raise last_error or RuntimeError("Gemini auto-find request failed")
 
         if response.parsed and response.parsed.official_website:
             url = str(response.parsed.official_website)

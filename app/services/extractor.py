@@ -15,6 +15,13 @@ from app.schemas.gemini import ConfidenceLevel, ExtractedEvent, ExtractionResult
 
 logger = logging.getLogger(__name__)
 
+MODEL_CANDIDATES = [
+    "gemini-flash-lite-latest",
+    "gemini-2.5-flash-lite",
+    "gemini-flash-latest",
+    "gemini-2.5-flash",
+]
+
 
 class ExtractorService:
     """Service for extracting structured event data from text using Gemini."""
@@ -45,7 +52,6 @@ class ExtractorService:
                 }
             return fallback
 
-        model = "gemini-2.5-flash"
         prompt = f"""
 You are an expert event data extractor.
 Review the following text from an artist's tour website and extract all UPCOMING events.
@@ -65,22 +71,36 @@ Website Content:
 {markdown}
 """
         self.last_debug = {
-            "model": model,
+            "model": MODEL_CANDIDATES[0],
+            "model_candidates": MODEL_CANDIDATES,
             "temperature": 0.1,
             "response_mime_type": "application/json",
             "prompt": prompt,
             "input_markdown_chars": len(markdown),
         }
         try:
-            response = self.client.models.generate_content(
-                model=model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=ExtractionResult,
-                    temperature=0.1,
-                ),
-            )
+            response = None
+            last_error = None
+            for model in MODEL_CANDIDATES:
+                try:
+                    response = self.client.models.generate_content(
+                        model=model,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_schema=ExtractionResult,
+                            temperature=0.1,
+                        ),
+                    )
+                    self.last_debug["model"] = model
+                    break
+                except Exception as e:
+                    last_error = e
+                    logger.warning("Gemini model %s failed, trying fallback: %s", model, e)
+
+            if response is None:
+                raise last_error or RuntimeError("Gemini request failed")
+
             self.last_debug["raw_response_text"] = getattr(response, "text", None)
             
             # The structured output is available in response.parsed

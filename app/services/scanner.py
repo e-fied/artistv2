@@ -203,9 +203,12 @@ def _scan_single_artist(
         try:
             client = TicketmasterClient(settings.ticketmaster_api_key)
             events = []
+            resolved_attraction = None
+            search_mode = "keyword"
 
             if artist.ticketmaster_attraction_id:
                 # Precise search by attraction ID
+                search_mode = "attraction_id"
                 for profile in profiles:
                     latlong = f"{profile.latitude},{profile.longitude}"
                     profile_events = client.search_events_by_attraction(
@@ -216,16 +219,37 @@ def _scan_single_artist(
                     )
                     events.extend(profile_events)
             else:
-                # Fallback: keyword search
-                for profile in profiles:
-                    latlong = f"{profile.latitude},{profile.longitude}"
-                    profile_events = client.search_events_by_keyword(
-                        keyword=artist.name,
-                        latlong=latlong,
-                        radius=profile.radius_km,
-                        country_code=profile.country_code,
-                    )
-                    events.extend(profile_events)
+                resolved_attraction = client.find_best_attraction_match(
+                    artist.name,
+                    artist_type=artist.artist_type,
+                    size=10,
+                )
+                if resolved_attraction:
+                    search_mode = "resolved_attraction_id"
+                    artist.ticketmaster_attraction_id = resolved_attraction["id"]
+                    artist.ticketmaster_attraction_name = resolved_attraction["name"]
+                    for profile in profiles:
+                        latlong = f"{profile.latitude},{profile.longitude}"
+                        profile_events = client.search_events_by_attraction(
+                            attraction_id=resolved_attraction["id"],
+                            latlong=latlong,
+                            radius=profile.radius_km,
+                            country_code=profile.country_code,
+                        )
+                        events.extend(profile_events)
+                else:
+                    # Fallback: keyword search
+                    for profile in profiles:
+                        latlong = f"{profile.latitude},{profile.longitude}"
+                        profile_events = client.search_events_by_keyword(
+                            keyword=artist.name,
+                            artist_name=artist.name,
+                            artist_type=artist.artist_type,
+                            latlong=latlong,
+                            radius=profile.radius_km,
+                            country_code=profile.country_code,
+                        )
+                        events.extend(profile_events)
 
             client.close()
 
@@ -281,6 +305,9 @@ def _scan_single_artist(
                     ],
                     "search": {
                         "attraction_id": artist.ticketmaster_attraction_id,
+                        "resolved_attraction_id": resolved_attraction["id"] if resolved_attraction else None,
+                        "resolved_attraction_name": resolved_attraction["name"] if resolved_attraction else None,
+                        "mode": search_mode,
                         "keyword_fallback": None if artist.ticketmaster_attraction_id else artist.name,
                     },
                     "events_returned": len(unique_events),
@@ -641,5 +668,6 @@ def _send_review_summary(db: Session, settings, total_possible: int) -> None:
         for name, count in summaries
     ]
 
-    message = format_review_summary(total_possible, artist_summaries)
+    review_url = settings.public_app_url.rstrip("/") + "/review"
+    message = format_review_summary(total_possible, artist_summaries, review_url=review_url)
     send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, message)
