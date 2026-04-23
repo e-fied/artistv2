@@ -721,8 +721,28 @@ tbody tr:hover {
 .artist-card .artist-actions {
   display: flex;
   gap: var(--space-xs);
+  flex-wrap: wrap;
+  align-items: center;
   margin-top: auto;
   padding-top: var(--space-sm);
+}
+
+.artist-card .artist-actions form {
+  margin: 0;
+}
+
+.artist-card .artist-actions .btn {
+  white-space: nowrap;
+}
+
+.artist-card .artist-actions .artist-action-delete {
+  margin-left: auto;
+}
+
+@media (max-width: 1200px) {
+  .artist-card .artist-actions .artist-action-delete {
+    margin-left: 0;
+  }
 }
 
 
