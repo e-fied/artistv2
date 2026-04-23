@@ -226,6 +226,134 @@ def test_fetch_embedded_events_uses_browser_headers_for_seated_pages(monkeypatch
     assert any("Mozilla/5.0" in user_agent for user_agent in seen_user_agents)
 
 
+def test_find_upnex_event_portal_config_from_inline_script():
+    crawler = CrawlerService(AppSettings())
+    page_html = """
+    <script src="https://upnex-events-test.pages.dev/events.js"></script>
+    <script>
+      initEvents({
+        locationId: "9ofXWQPyRvJNOGpFT4yU",
+        eventPortalToken:
+         "token-123",
+        waitlistFormId: "wrzqMgq05EdMG7Yv3yNl",
+      });
+    </script>
+    """
+
+    config = crawler._find_upnex_event_portal_config(page_html)
+
+    assert config == {
+        "location_id": "9ofXWQPyRvJNOGpFT4yU",
+        "event_portal_token": "token-123",
+    }
+
+
+def test_upnex_api_to_markdown_includes_live_events_and_ticket_links():
+    crawler = CrawlerService(AppSettings())
+    data = {
+        "data": {
+            "location": {"name": "Ari Matti"},
+            "events": [
+                {
+                    "status": "live",
+                    "startDate": "2025-10-18",
+                    "displayCity": "Denver, CO",
+                    "displayVenue": "Paramount Theatre",
+                    "address": "1621 Glenarm Pl, Denver, CO, USA",
+                    "additionalInfo": "Killers of Kill Tony",
+                    "ticketLinkGroups": [
+                        {
+                            "ticketLink": "https://tickets.example.com/denver",
+                            "buttonText": "Tickets",
+                        }
+                    ],
+                    "showtimes": [
+                        {
+                            "ticketLinks": [
+                                {
+                                    "ticketLink": "#",
+                                    "buttonText": "Tickets",
+                                }
+                            ]
+                        }
+                    ],
+                },
+                {
+                    "status": "draft",
+                    "startDate": "2025-11-01",
+                    "displayCity": "Hidden City",
+                    "displayVenue": "Hidden Venue",
+                },
+            ],
+        }
+    }
+
+    markdown = crawler._upnex_api_to_markdown(data)
+
+    assert markdown is not None
+    assert "Upnex event portal shows for Ari Matti" in markdown
+    assert "2025-10-18 | Paramount Theatre | Denver, CO" in markdown
+    assert "Killers of Kill Tony" in markdown
+    assert "Tickets: https://tickets.example.com/denver" in markdown
+    assert "Hidden Venue" not in markdown
+
+
+def test_fetch_embedded_events_enriches_upnex_event_portal(monkeypatch):
+    crawler = CrawlerService(AppSettings())
+    real_client = httpx.Client
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "arimatti.com":
+            return httpx.Response(
+                200,
+                text="""
+                <script src="https://upnex-events-test.pages.dev/events.js"></script>
+                <script>
+                  initEvents({
+                    locationId: "9ofXWQPyRvJNOGpFT4yU",
+                    eventPortalToken: "token-123",
+                  });
+                </script>
+                """,
+            )
+        if request.url.host == "events-portal-sage.vercel.app":
+            assert request.headers.get("authorization") == "Bearer token-123"
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "location": {"name": "Ari Matti"},
+                        "events": [
+                            {
+                                "status": "live",
+                                "startDate": "2025-10-18",
+                                "displayCity": "Denver, CO",
+                                "displayVenue": "Paramount Theatre",
+                                "ticketLinkGroups": [
+                                    {
+                                        "ticketLink": "https://tickets.example.com/denver",
+                                        "buttonText": "Tickets",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                },
+            )
+        return httpx.Response(404)
+
+    def client_factory(*args, **kwargs):
+        return real_client(*args, transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr(httpx, "Client", client_factory)
+
+    markdown = crawler._fetch_embedded_events_markdown("https://arimatti.com/#section-d4bgT3Wh1P")
+
+    assert markdown is not None
+    assert "Upnex event portal shows for Ari Matti" in markdown
+    assert "Paramount Theatre" in markdown
+
+
 def test_punchup_api_refetches_missing_comedian_id():
     crawler = CrawlerService(AppSettings())
 

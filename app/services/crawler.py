@@ -170,6 +170,13 @@ class CrawlerService:
                 except Exception as e:
                     logger.debug(f"JSON-LD event enrichment failed for {url}: {e}")
 
+                try:
+                    upnex_markdown = self._fetch_upnex_events_markdown(client, page_html)
+                    if upnex_markdown:
+                        sections.append(upnex_markdown)
+                except Exception as e:
+                    logger.debug(f"Upnex event enrichment failed for {url}: {e}")
+
                 if is_punchup:
                     try:
                         punchup_markdown = self._fetch_punchup_api_events_markdown(client, url, page_html)
@@ -199,6 +206,50 @@ class CrawlerService:
         except Exception as e:
             logger.warning(f"Embedded event enrichment failed for {url}: {e}")
             return None
+
+    def _fetch_upnex_events_markdown(self, client: httpx.Client, page_html: str) -> Optional[str]:
+        """Fetch Upnex event portal shows referenced by page scripts."""
+        config = self._find_upnex_event_portal_config(page_html)
+        if not config:
+            return None
+
+        api_response = client.get(
+            f"https://events-portal-sage.vercel.app/api/events/{config['location_id']}",
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {config['event_portal_token']}",
+            },
+        )
+        api_response.raise_for_status()
+        return self._upnex_api_to_markdown(api_response.json())
+
+    def _find_upnex_event_portal_config(self, page_html: str) -> Optional[dict[str, str]]:
+        """Find Upnex event portal credentials from inline initEvents config."""
+        if "initEvents" not in page_html:
+            return None
+
+        location_match = re.search(
+            r'locationId\s*:\s*["\']([^"\']+)["\']',
+            page_html,
+            flags=re.IGNORECASE,
+        )
+        token_match = re.search(
+            r'eventPortalToken\s*:\s*["\']([^"\']+)["\']',
+            page_html,
+            flags=re.IGNORECASE,
+        )
+        if not location_match or not token_match:
+            return None
+
+        location_id = unescape(location_match.group(1)).strip()
+        event_portal_token = unescape(token_match.group(1)).strip()
+        if not location_id or not event_portal_token:
+            return None
+
+        return {
+            "location_id": location_id,
+            "event_portal_token": event_portal_token,
+        }
 
     def _fetch_seated_api_events_markdown(self, client: httpx.Client, artist_id: str) -> Optional[str]:
         """Fetch events directly from Seated's widget API."""
@@ -722,6 +773,95 @@ class CrawlerService:
 
     def _punchup_text(self, value) -> str:
         """Return readable text from Punchup API scalar values."""
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        return str(value).strip()
+
+    def _upnex_api_to_markdown(self, data: dict) -> Optional[str]:
+        """Convert Upnex event portal responses into LLM-friendly lines."""
+        payload = data.get("data") or {}
+        events = payload.get("events") or []
+        if not isinstance(events, list):
+            return None
+
+        location_name = self._upnex_text((payload.get("location") or {}).get("name")) or "Artist"
+        lines = [f"Upnex event portal shows for {location_name}:"]
+        live_events = 0
+
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            if self._upnex_text(event.get("status")).lower() != "live":
+                continue
+
+            live_events += 1
+            start_date = self._upnex_text(event.get("startDate")) or "Date TBD"
+            end_date = self._upnex_text(event.get("endDate"))
+            if end_date and end_date != start_date:
+                date_label = f"{start_date} to {end_date}"
+            else:
+                date_label = start_date
+
+            city = self._upnex_text(event.get("displayCity") or event.get("city"))
+            state = self._upnex_text(event.get("displayState") or event.get("state"))
+            venue = self._upnex_text(event.get("displayVenue") or event.get("venue")) or "Venue TBD"
+            title = self._upnex_text(event.get("additionalInfo"))
+            address = self._upnex_text(event.get("address"))
+
+            line = f"- {date_label} | {venue}"
+            location_bits = [bit for bit in (city, state) if bit]
+            if location_bits:
+                line = f"{line} | {', '.join(location_bits)}"
+            if address:
+                line = f"{line} | {address}"
+            if title:
+                line = f"{line} | {title}"
+
+            ticket_links = self._upnex_ticket_links(event)
+            for label, url in ticket_links:
+                line = f"{line} | {label}: {url}"
+
+            lines.append(line)
+
+        if live_events == 0:
+            return None
+
+        return "\n".join(lines)
+
+    def _upnex_ticket_links(self, event: dict) -> list[tuple[str, str]]:
+        """Collect unique ticket links from Upnex ticket groups and showtimes."""
+        links: list[tuple[str, str]] = []
+        seen_urls: set[str] = set()
+
+        for group in event.get("ticketLinkGroups") or []:
+            if not isinstance(group, dict):
+                continue
+            url = self._upnex_text(group.get("ticketLink"))
+            if not url or url in seen_urls:
+                continue
+            label = self._upnex_text(group.get("buttonText")) or "Tickets"
+            seen_urls.add(url)
+            links.append((label, url))
+
+        for showtime in event.get("showtimes") or []:
+            if not isinstance(showtime, dict):
+                continue
+            for ticket in showtime.get("ticketLinks") or []:
+                if not isinstance(ticket, dict):
+                    continue
+                url = self._upnex_text(ticket.get("ticketLink"))
+                if not url or url in seen_urls or url == "#":
+                    continue
+                label = self._upnex_text(ticket.get("buttonText")) or "Tickets"
+                seen_urls.add(url)
+                links.append((label, url))
+
+        return links
+
+    def _upnex_text(self, value) -> str:
+        """Return readable text from Upnex API scalar values."""
         if value is None:
             return ""
         if isinstance(value, str):
