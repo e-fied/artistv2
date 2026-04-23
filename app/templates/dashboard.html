@@ -81,6 +81,9 @@
       <div class="artist-meta">
         <span class="badge badge-type">{{ item.artist.artist_type }}</span>
         <span>{{ item.event_count }} event{{ 's' if item.event_count != 1 else '' }}</span>
+        {% if not item.artist.ticketmaster_attraction_id %}
+          <span style="color: var(--status-warning);">TM review</span>
+        {% endif %}
         {% if item.possible_count > 0 %}
           <span style="color: var(--status-warning);">{{ item.possible_count }} pending</span>
         {% endif %}

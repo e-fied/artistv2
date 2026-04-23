@@ -38,6 +38,9 @@
       <div class="text-sm mb-sm text-tertiary">
         {% if source.source_type == 'ticketmaster' %}
           <span class="badge badge-neutral">Ticketmaster</span>
+          {% if not source.artist.ticketmaster_attraction_id %}
+            <span class="badge badge-warning">Needs Review</span>
+          {% endif %}
         {% else %}
           <div class="font-mono text-xs break-all" style="word-break: break-all;">{{ source.url }}</div>
         {% endif %}
@@ -58,6 +61,9 @@
           <button type="submit" class="btn btn-secondary btn-sm">Force Retry</button>
         </form>
         <a href="/artists/{{ source.artist_id }}/edit" class="btn btn-ghost btn-sm ml-sm">Edit Artist</a>
+        {% if source.source_type == 'ticketmaster' and not source.artist.ticketmaster_attraction_id %}
+          <a href="/artists/{{ source.artist_id }}/tm-search" class="btn btn-ghost btn-sm ml-sm">Review TM</a>
+        {% endif %}
         {% if source.id in latest_debug_scan_by_source %}
           <a href="/scans/{{ latest_debug_scan_by_source[source.id] }}/debug" hx-boost="false" class="btn btn-ghost btn-sm ml-sm">Latest Debug</a>
         {% else %}

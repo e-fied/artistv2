@@ -25,6 +25,7 @@ def add_artist_page(request: Request, db: Session = Depends(get_db)):
             "artist": None,
             "locations": locations,
             "editing": False,
+            "tm_review_requested": False,
         },
     )
 
@@ -85,7 +86,7 @@ def create_artist(
             ))
 
     db.commit()
-    return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url=f"/artists/{artist.id}/edit?tm_review=1", status_code=303)
 
 
 @router.get("/{artist_id}/edit")
@@ -108,6 +109,7 @@ def edit_artist_page(
             "editing": True,
             "artist_location_ids": artist_location_ids,
             "artist_travel_ids": artist_travel_ids,
+            "tm_review_requested": request.query_params.get("tm_review") == "1",
         },
     )
 
@@ -235,6 +237,7 @@ def tm_link(
     db: Session = Depends(get_db),
     attraction_id: str = Form(...),
     attraction_name: str = Form(...),
+    redirect_to: str = Form(""),
 ):
     """Link a Ticketmaster attraction to an artist."""
     artist = db.query(Artist).filter(Artist.id == artist_id).first()
@@ -242,7 +245,7 @@ def tm_link(
         artist.ticketmaster_attraction_id = attraction_id
         artist.ticketmaster_attraction_name = attraction_name
         db.commit()
-    return RedirectResponse(url=f"/artists/{artist_id}/edit", status_code=303)
+    return RedirectResponse(url=redirect_to or f"/artists/{artist_id}/edit", status_code=303)
 
 
 @router.post("/{artist_id}/tm-unlink")

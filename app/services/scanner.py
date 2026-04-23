@@ -205,6 +205,7 @@ def _scan_single_artist(
             events = []
             resolved_attraction = None
             search_mode = "keyword"
+            attraction_candidates = []
 
             if artist.ticketmaster_attraction_id:
                 # Precise search by attraction ID
@@ -219,6 +220,7 @@ def _scan_single_artist(
                     )
                     events.extend(profile_events)
             else:
+                attraction_candidates = client.search_attractions(artist.name, size=8)
                 resolved_attraction = client.find_best_attraction_match(
                     artist.name,
                     artist_type=artist.artist_type,
@@ -291,6 +293,7 @@ def _scan_single_artist(
                 scan_run_id,
                 settings.debug_scan_capture,
                 {
+                    "artist_id": artist.id,
                     "artist": artist.name,
                     "source_type": "ticketmaster",
                     "mode": "ticketmaster",
@@ -308,6 +311,8 @@ def _scan_single_artist(
                         "resolved_attraction_id": resolved_attraction["id"] if resolved_attraction else None,
                         "resolved_attraction_name": resolved_attraction["name"] if resolved_attraction else None,
                         "mode": search_mode,
+                        "needs_review": bool(not artist.ticketmaster_attraction_id and search_mode == "keyword"),
+                        "candidate_attractions": attraction_candidates[:5],
                         "keyword_fallback": None if artist.ticketmaster_attraction_id else artist.name,
                     },
                     "events_returned": len(unique_events),

@@ -112,6 +112,12 @@
       <h3 class="card-title">Ticketmaster Identity</h3>
     </div>
 
+    {% if tm_review_requested and not artist.ticketmaster_attraction_id %}
+    <div class="code-block text-sm mb-md" style="color: var(--status-warning); white-space: pre-wrap;">
+      This artist still needs a Ticketmaster review. Linking the right attraction helps avoid false positives.
+    </div>
+    {% endif %}
+
     {% if artist.ticketmaster_attraction_id %}
     <div class="flex items-center justify-between">
       <div>
@@ -132,7 +138,7 @@
     <div class="flex items-center justify-between">
       <div>
         <div class="text-sm text-tertiary">No Ticketmaster attraction linked</div>
-        <div class="text-xs text-muted mt-sm">Link an attraction for precise event matching (recommended)</div>
+        <div class="text-xs text-muted mt-sm">Link an attraction for precise event matching and fewer false positives (recommended)</div>
       </div>
       <a href="/artists/{{ artist.id }}/tm-search" class="btn btn-secondary btn-sm">Search Ticketmaster</a>
     </div>

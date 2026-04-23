@@ -42,6 +42,26 @@
       <details class="mb-md" open>
         <summary class="font-semibold">Ticketmaster Search</summary>
         <pre class="code-block text-xs mt-sm">{{ source.get('search') | tojson(indent=2) }}</pre>
+        {% if source.get('search', {}).get('needs_review') and source.get('search', {}).get('candidate_attractions') %}
+        <div class="mt-md">
+          <div class="text-xs text-muted mb-sm">Ticketmaster needs review. Pick the correct attraction to lock this artist down:</div>
+          <div class="card-grid">
+            {% for candidate in source.get('search', {}).get('candidate_attractions', []) %}
+            <div class="card" style="padding: var(--space-sm);">
+              <div class="font-semibold">{{ candidate.get('name', 'Unknown') }}</div>
+              <div class="text-xs text-muted mt-xs">{{ candidate.get('segment', '') }}{% if candidate.get('genre') %} · {{ candidate.get('genre') }}{% endif %}</div>
+              <div class="text-xs text-muted font-mono mt-sm">ID: {{ candidate.get('id', '') }}</div>
+              <form method="post" action="/artists/{{ source.get('artist_id') }}/tm-link" class="mt-sm" hx-boost="false">
+                <input type="hidden" name="attraction_id" value="{{ candidate.get('id', '') }}">
+                <input type="hidden" name="attraction_name" value="{{ candidate.get('name', '') }}">
+                <input type="hidden" name="redirect_to" value="/scans/{{ scan.id }}/debug">
+                <button type="submit" class="btn btn-primary btn-sm">Use This Attraction</button>
+              </form>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
       </details>
       {% endif %}
 

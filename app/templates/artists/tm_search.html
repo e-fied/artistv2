@@ -46,6 +46,7 @@
       <form method="post" action="/artists/{{ artist.id }}/tm-link">
         <input type="hidden" name="attraction_id" value="{{ r.id }}">
         <input type="hidden" name="attraction_name" value="{{ r.name }}">
+        <input type="hidden" name="redirect_to" value="/artists/{{ artist.id }}/edit">
         <button type="submit" class="btn btn-primary btn-sm w-full">Link This Artist</button>
       </form>
     </div>
