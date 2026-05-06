@@ -9,19 +9,11 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, HttpUrl
 
-from app.config import load_settings
+from app.config import DEFAULT_GEMINI_AUTOFIND_MODELS, load_settings
 from app.database import SessionLocal
 from app.models.artist import Artist, ArtistSource
 
 logger = logging.getLogger(__name__)
-
-MODEL_CANDIDATES = [
-    "gemini-flash-lite-latest",
-    "gemini-2.5-flash-lite",
-    "gemini-flash-latest",
-    "gemini-2.5-flash",
-]
-
 
 class AutoFindResult(BaseModel):
     """The structured result of our LLM search for an official tour site."""
@@ -60,9 +52,12 @@ Prioritize their official personal website (e.g. artistname.com/tour).
 Return the exact URL and evaluate your confidence (high if it's clearly their main official site, low if unsure or it's a generic aggregator).
 """
 
+        model_candidates = settings.gemini_autofind_models or list(DEFAULT_GEMINI_AUTOFIND_MODELS)
+        temperature = settings.gemini_autofind_temperature
+
         response = None
         last_error = None
-        for model in MODEL_CANDIDATES:
+        for model in model_candidates:
             try:
                 response = client.models.generate_content(
                     model=model,
@@ -70,7 +65,7 @@ Return the exact URL and evaluate your confidence (high if it's clearly their ma
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         response_schema=AutoFindResult,
-                        temperature=0.0,
+                        temperature=temperature,
                         tools=[{"google_search": {}}],  # Enable Google Search Grounding
                     ),
                 )

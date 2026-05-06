@@ -12,6 +12,16 @@ from app.database import get_db
 router = APIRouter(prefix="/settings")
 
 
+def _parse_model_list(raw_value: str, fallback: list[str]) -> list[str]:
+    """Split comma/newline separated model lists and keep non-empty entries."""
+    values = [
+        item.strip()
+        for item in raw_value.replace(",", "\n").splitlines()
+        if item.strip()
+    ]
+    return values or list(fallback)
+
+
 @router.get("/")
 def settings_page(request: Request, db: Session = Depends(get_db)):
     """Render the settings page."""
@@ -40,8 +50,13 @@ def settings_page(request: Request, db: Session = Depends(get_db)):
 @router.post("/")
 def update_settings(
     request: Request,
+    public_app_url: str = Form("https://artist.fied.ca"),
     scan_interval_hours: int = Form(6),
     timezone: str = Form("America/Vancouver"),
+    gemini_extractor_models: str = Form("gemini-flash-lite-latest\ngemini-2.5-flash-lite\ngemini-flash-latest\ngemini-2.5-flash"),
+    gemini_extractor_temperature: float = Form(0.1),
+    gemini_autofind_models: str = Form("gemini-flash-lite-latest\ngemini-2.5-flash-lite\ngemini-flash-latest\ngemini-2.5-flash"),
+    gemini_autofind_temperature: float = Form(0.0),
     notify_confirmed: bool = Form(False),
     notify_review_summary: bool = Form(False),
     notify_source_health: bool = Form(False),
@@ -54,8 +69,19 @@ def update_settings(
     """Update non-secret settings."""
     settings = load_settings()
 
+    settings.public_app_url = public_app_url.strip()
     settings.scan_interval_hours = scan_interval_hours
     settings.timezone = timezone
+    settings.gemini_extractor_models = _parse_model_list(
+        gemini_extractor_models,
+        settings.gemini_extractor_models,
+    )
+    settings.gemini_extractor_temperature = gemini_extractor_temperature
+    settings.gemini_autofind_models = _parse_model_list(
+        gemini_autofind_models,
+        settings.gemini_autofind_models,
+    )
+    settings.gemini_autofind_temperature = gemini_autofind_temperature
     settings.notify_confirmed = notify_confirmed
     settings.notify_review_summary = notify_review_summary
     settings.notify_source_health = notify_source_health

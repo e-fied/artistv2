@@ -80,6 +80,56 @@
       </div>
     </div>
 
+    <!-- App -->
+    <div class="card mb-lg">
+      <div class="card-header">
+        <h3 class="card-title">App</h3>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="public_app_url">Public App URL</label>
+        <input type="url" id="public_app_url" name="public_app_url"
+               class="form-input font-mono" value="{{ settings.public_app_url }}">
+        <div class="form-hint">Used in Telegram links like the review inbox.</div>
+      </div>
+    </div>
+
+    <!-- Gemini -->
+    <div class="card mb-lg">
+      <div class="card-header">
+        <h3 class="card-title">Gemini</h3>
+      </div>
+      <p class="text-xs text-muted mb-md">Top model is tried first. Add one model per line to control fallback order.</p>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="gemini_extractor_temperature">Extractor Temperature</label>
+          <input type="number" id="gemini_extractor_temperature" name="gemini_extractor_temperature"
+                 class="form-input" min="0" max="2" step="0.1"
+                 value="{{ settings.gemini_extractor_temperature }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="gemini_autofind_temperature">Auto-Find Temperature</label>
+          <input type="number" id="gemini_autofind_temperature" name="gemini_autofind_temperature"
+                 class="form-input" min="0" max="2" step="0.1"
+                 value="{{ settings.gemini_autofind_temperature }}">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="gemini_extractor_models">Extractor Models</label>
+        <textarea id="gemini_extractor_models" name="gemini_extractor_models"
+                  class="form-input font-mono" rows="4">{{ settings.gemini_extractor_models | join('\n') }}</textarea>
+        <div class="form-hint">Controls website event extraction order.</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="gemini_autofind_models">Auto-Find Models</label>
+        <textarea id="gemini_autofind_models" name="gemini_autofind_models"
+                  class="form-input font-mono" rows="4">{{ settings.gemini_autofind_models | join('\n') }}</textarea>
+        <div class="form-hint">Controls the artist website finder order.</div>
+      </div>
+    </div>
+
     <!-- Crawl4AI -->
     <div class="card mb-lg">
       <div class="card-header">

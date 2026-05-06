@@ -23,6 +23,20 @@ DB_PATH = DATA_DIR / "tourtracker.db"
 LOG_DIR = DATA_DIR / "logs"
 DEBUG_DIR = DATA_DIR / "debug"
 
+DEFAULT_GEMINI_EXTRACTOR_MODELS = [
+    "gemini-flash-lite-latest",
+    "gemini-2.5-flash-lite",
+    "gemini-flash-latest",
+    "gemini-2.5-flash",
+]
+
+DEFAULT_GEMINI_AUTOFIND_MODELS = [
+    "gemini-flash-lite-latest",
+    "gemini-2.5-flash-lite",
+    "gemini-flash-latest",
+    "gemini-2.5-flash",
+]
+
 
 # ---------------------------------------------------------------------------
 # Settings model
@@ -49,6 +63,12 @@ class AppSettings(BaseModel):
     # --- Scheduling ---
     scan_interval_hours: int = Field(default=6, description="Hours between scans")
     timezone: str = Field(default="America/Vancouver")
+
+    # --- Gemini ---
+    gemini_extractor_models: List[str] = Field(default_factory=lambda: list(DEFAULT_GEMINI_EXTRACTOR_MODELS))
+    gemini_extractor_temperature: float = Field(default=0.1)
+    gemini_autofind_models: List[str] = Field(default_factory=lambda: list(DEFAULT_GEMINI_AUTOFIND_MODELS))
+    gemini_autofind_temperature: float = Field(default=0.0)
 
     # --- Notifications ---
     notify_confirmed: bool = Field(default=True, description="Telegram on confirmed events")

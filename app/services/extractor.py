@@ -10,19 +10,11 @@ from typing import Optional
 from google import genai
 from google.genai import types
 
-from app.config import AppSettings
+from app.config import AppSettings, DEFAULT_GEMINI_EXTRACTOR_MODELS
 from app.schemas.gemini import ConfidenceLevel, ExtractedEvent, ExtractionResult
 from app.services.gemini_cost import usage_from_metadata
 
 logger = logging.getLogger(__name__)
-
-MODEL_CANDIDATES = [
-    "gemini-flash-lite-latest",
-    "gemini-2.5-flash-lite",
-    "gemini-flash-latest",
-    "gemini-2.5-flash",
-]
-
 
 class ExtractorService:
     """Service for extracting structured event data from text using Gemini."""
@@ -71,10 +63,12 @@ Website Content:
 ----------------
 {markdown}
 """
+        model_candidates = self.settings.gemini_extractor_models or list(DEFAULT_GEMINI_EXTRACTOR_MODELS)
+        temperature = self.settings.gemini_extractor_temperature
         self.last_debug = {
-            "model": MODEL_CANDIDATES[0],
-            "model_candidates": MODEL_CANDIDATES,
-            "temperature": 0.1,
+            "model": model_candidates[0] if model_candidates else None,
+            "model_candidates": model_candidates,
+            "temperature": temperature,
             "response_mime_type": "application/json",
             "prompt": prompt,
             "input_markdown_chars": len(markdown),
@@ -82,7 +76,7 @@ Website Content:
         try:
             response = None
             last_error = None
-            for model in MODEL_CANDIDATES:
+            for model in model_candidates:
                 try:
                     response = self.client.models.generate_content(
                         model=model,
@@ -90,7 +84,7 @@ Website Content:
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",
                             response_schema=ExtractionResult,
-                            temperature=0.1,
+                            temperature=temperature,
                         ),
                     )
                     self.last_debug["model"] = model
