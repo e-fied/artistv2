@@ -12,9 +12,13 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import LOG_DIR, load_settings
 from app.database import Base, SessionLocal, engine, ensure_sqlite_schema
+from app.models.event import Event
+from app.models.scan import ScanRun
 from app.seed import seed_locations
 
 # ---------------------------------------------------------------------------
@@ -91,7 +95,29 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # Templates
 TEMPLATE_DIR = Path(__file__).parent / "app" / "templates"
 TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
-templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+def base_template_context(_request):
+    """Common values used by the base layout on every rendered page."""
+    db = SessionLocal()
+    try:
+        last_scan = db.query(ScanRun).order_by(ScanRun.started_at.desc()).first()
+        review_count = (
+            db.query(func.count(Event.id))
+            .filter(Event.status == "possible")
+            .scalar()
+            or 0
+        )
+        return {"last_scan": last_scan, "review_count": review_count}
+    except SQLAlchemyError:
+        logger.exception("Failed to load base template context")
+        return {"last_scan": None, "review_count": 0}
+    finally:
+        db.close()
+
+
+templates = Jinja2Templates(
+    directory=str(TEMPLATE_DIR),
+    context_processors=[base_template_context],
+)
 
 
 def localtime(value, fmt: str = "%b %d, %I:%M %p") -> str:

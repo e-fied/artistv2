@@ -122,6 +122,10 @@ a:hover {
   min-height: 100vh;
 }
 
+.mobile-nav {
+  display: none;
+}
+
 .sidebar {
   width: 240px;
   flex-shrink: 0;
@@ -219,7 +223,9 @@ a:hover {
   flex: 1;
   margin-left: 240px;
   padding: var(--space-2xl);
+  width: calc(100% - 240px);
   max-width: 1200px;
+  min-width: 0;
 }
 
 
@@ -229,6 +235,8 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
   margin-bottom: var(--space-xl);
 }
 
@@ -560,6 +568,7 @@ a:hover {
 
 .table-wrap {
   overflow-x: auto;
+  max-width: 100%;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
 }
@@ -865,13 +874,54 @@ tbody tr:hover {
 /* ── Responsive ─────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
+  .app-shell {
+    display: block;
+  }
+
   .sidebar {
-    display: none; /* TODO: mobile hamburger menu */
+    display: none;
+  }
+
+  .mobile-nav {
+    position: sticky;
+    top: 0;
+    z-index: 90;
+    display: flex;
+    gap: var(--space-xs);
+    overflow-x: auto;
+    padding: var(--space-sm) var(--space-md);
+    background: rgba(17, 17, 19, 0.96);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .mobile-nav a {
+    flex: 0 0 auto;
+    padding: 6px 10px;
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .mobile-nav a.active {
+    background: var(--accent-muted);
+    color: var(--text-primary);
   }
 
   .main-content {
     margin-left: 0;
+    width: 100%;
+    max-width: none;
     padding: var(--space-md);
+  }
+
+  .page-header {
+    align-items: flex-start;
+  }
+
+  .page-header > .flex {
+    flex-wrap: wrap;
   }
 
   .stats-row {
