@@ -29,3 +29,11 @@ def test_base_template_shows_latest_scan_on_non_dashboard_pages():
     assert response.status_code == 200
     assert "Last scan:" in response.text
     assert "No scans yet" not in response.text
+
+
+def test_base_template_versions_static_stylesheet():
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'href="/static/css/style.css?v=' in response.text

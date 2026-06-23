@@ -95,8 +95,19 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # Templates
 TEMPLATE_DIR = Path(__file__).parent / "app" / "templates"
 TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def static_asset_version(relative_path: str) -> str:
+    """Return a stable cache-busting version for a static asset."""
+    try:
+        return str((STATIC_DIR / relative_path).stat().st_mtime_ns)
+    except OSError:
+        return "1"
+
+
 def base_template_context(_request):
     """Common values used by the base layout on every rendered page."""
+    static_context = {"style_version": static_asset_version("css/style.css")}
     db = SessionLocal()
     try:
         last_scan = db.query(ScanRun).order_by(ScanRun.started_at.desc()).first()
@@ -106,10 +117,10 @@ def base_template_context(_request):
             .scalar()
             or 0
         )
-        return {"last_scan": last_scan, "review_count": review_count}
+        return {**static_context, "last_scan": last_scan, "review_count": review_count}
     except SQLAlchemyError:
         logger.exception("Failed to load base template context")
-        return {"last_scan": None, "review_count": 0}
+        return {**static_context, "last_scan": None, "review_count": 0}
     finally:
         db.close()
 
