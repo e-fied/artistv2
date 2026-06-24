@@ -11,3 +11,7 @@ _Avoid_: Coming event, match, hit
 **Review Candidate**:
 An event that may be relevant but needs human judgment before it is trusted enough to notify about.
 _Avoid_: Possible event, pending event, maybe
+
+**Tracked Location**:
+A place the user cares about when deciding whether an artist's event matters.
+_Avoid_: Location profile, city, market
