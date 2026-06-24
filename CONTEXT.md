@@ -15,3 +15,7 @@ _Avoid_: Possible event, pending event, maybe
 **Tracked Location**:
 A place the user cares about when deciding whether an artist's event matters.
 _Avoid_: Location profile, city, market
+
+**Event Source**:
+A place the app checks for tour activity for a tracked artist.
+_Avoid_: Source URL, feed, provider
