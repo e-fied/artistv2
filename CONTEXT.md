@@ -19,3 +19,7 @@ _Avoid_: Location profile, city, market
 **Event Source**:
 A place the app checks for tour activity for a tracked artist.
 _Avoid_: Source URL, feed, provider
+
+**Tracked Artist**:
+A performer or group whose tour activity the user wants the app to monitor.
+_Avoid_: Artist, comedian, act
