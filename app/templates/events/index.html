@@ -5,128 +5,145 @@
 <div class="animate-in">
   <div class="page-header">
     <div>
-      <h2>Event History</h2>
-      <p class="subtitle">All discovered events across your tracked artists</p>
+      <h2>Events</h2>
+      <p class="subtitle">Upcoming shows first; history stays available when you need it</p>
     </div>
   </div>
 
-  <!-- Filters -->
-  <div class="card mb-lg">
+  <nav class="view-tabs mb-md" aria-label="Event views">
+    <a href="/events?view=upcoming" class="btn btn-ghost btn-sm {% if current_view == 'upcoming' %}active{% endif %}">Upcoming</a>
+    <a href="/events?view=going" class="btn btn-ghost btn-sm {% if current_view == 'going' %}active{% endif %}">Going</a>
+    <a href="/events?view=past" class="btn btn-ghost btn-sm {% if current_view == 'past' %}active{% endif %}">Past</a>
+    <a href="/events?view=all" class="btn btn-ghost btn-sm {% if current_view == 'all' %}active{% endif %}">All</a>
+  </nav>
+
+  <div class="card mb-lg event-filter-card">
     <form method="get" action="/events" class="flex gap-md items-center" style="flex-wrap: wrap;">
-      <div class="form-group" style="margin-bottom: 0; min-width: 160px;">
-        <select name="status" class="form-select">
+      <input type="hidden" name="view" value="{{ current_view }}">
+      <div class="form-group compact-field">
+        <label for="event-status-filter" class="sr-only">Status</label>
+        <select id="event-status-filter" name="status" class="form-select">
           <option value="">All statuses</option>
-          <option value="confirmed" {% if filter_status == 'confirmed' %}selected{% endif %}>✅ Confirmed</option>
-          <option value="possible" {% if filter_status == 'possible' %}selected{% endif %}>⚠️ Possible</option>
-          <option value="rejected" {% if filter_status == 'rejected' %}selected{% endif %}>❌ Rejected</option>
-          <option value="expired" {% if filter_status == 'expired' %}selected{% endif %}>⏰ Expired</option>
+          <option value="confirmed" {% if filter_status == 'confirmed' %}selected{% endif %}>Confirmed</option>
+          <option value="possible" {% if filter_status == 'possible' %}selected{% endif %}>Possible</option>
+          <option value="rejected" {% if filter_status == 'rejected' %}selected{% endif %}>Rejected</option>
+          <option value="expired" {% if filter_status == 'expired' %}selected{% endif %}>Expired</option>
         </select>
       </div>
-      <div class="form-group" style="margin-bottom: 0; min-width: 200px;">
-        <select name="artist_id" class="form-select">
+      <div class="form-group compact-field artist-filter">
+        <label for="event-artist-filter" class="sr-only">Artist</label>
+        <select id="event-artist-filter" name="artist_id" class="form-select">
           <option value="0">All artists</option>
           {% for artist in artists %}
             <option value="{{ artist.id }}" {% if filter_artist_id == artist.id %}selected{% endif %}>{{ artist.name }}</option>
           {% endfor %}
         </select>
       </div>
-      <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+      <button type="submit" class="btn btn-secondary btn-sm">Apply</button>
       {% if filter_status or filter_artist_id %}
-        <a href="/events" class="btn btn-ghost btn-sm">Clear</a>
+        <a href="/events?view={{ current_view }}" class="btn btn-ghost btn-sm">Clear filters</a>
       {% endif %}
+      <span class="text-xs text-muted ml-auto">{{ total_events }} event{{ 's' if total_events != 1 else '' }}</span>
     </form>
+
     {% if events %}
-    <form method="post" action="/events/delete-filtered" class="mt-sm"
-          onsubmit="return confirm('Delete the currently filtered events? This lets scans rediscover them for testing.')">
-      <input type="hidden" name="status" value="{{ filter_status }}">
-      <input type="hidden" name="artist_id" value="{{ filter_artist_id }}">
-      <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-error);">Delete Matching Events</button>
-      <span class="text-xs text-muted">Use this for testing rediscovery. Existing events are deduped until deleted.</span>
-    </form>
+    <details class="maintenance-actions mt-sm">
+      <summary>Testing tools</summary>
+      <form method="post" action="/events/delete-filtered" class="mt-sm"
+            onsubmit="return confirm('Delete every event matching these filters? This is only for scan-rediscovery testing.')">
+        <input type="hidden" name="status" value="{{ filter_status }}">
+        <input type="hidden" name="artist_id" value="{{ filter_artist_id }}">
+        <input type="hidden" name="return_to" value="{{ return_to }}">
+        <button type="submit" class="btn btn-danger btn-sm">Delete matching events</button>
+      </form>
+    </details>
     {% endif %}
   </div>
 
   {% if events %}
-  <div class="table-wrap animate-in stagger-1">
-    <table>
-      <thead>
-        <tr>
-          <th>Status</th>
-          <th>Artist</th>
-          <th>Event</th>
-          <th>Venue</th>
-          <th>Location</th>
-          <th>Date</th>
-          <th>Seen</th>
-          <th>Match</th>
-          <th>Source</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for event in events %}
-        <tr>
-          <td>
-            {% if event.status == 'confirmed' %}
-              <span class="badge badge-success">confirmed</span>
-            {% elif event.status == 'possible' %}
-              <span class="badge badge-warning">possible</span>
-            {% elif event.status == 'rejected' %}
-              <span class="badge badge-error">rejected</span>
-            {% else %}
-              <span class="badge badge-neutral">{{ event.status }}</span>
-            {% endif %}
-          </td>
-          <td>
-            <span class="font-semibold">{{ event.artist.name if event.artist else '—' }}</span>
-          </td>
-          <td class="text-sm">{{ event.event_name }}</td>
-          <td class="text-sm">{{ event.venue }}</td>
-          <td>
-            <span class="text-sm">{{ event.city }}</span>
-            {% if event.region %}<span class="text-xs text-muted">, {{ event.region }}</span>{% endif %}
-          </td>
-          <td>
-            <span class="font-mono text-sm">{{ event.event_date.strftime('%Y-%m-%d') if event.event_date else 'TBD' }}</span>
-          </td>
-          <td>
-            <div class="font-mono text-xs">{{ event.first_seen_at|localtime('%b %d, %I:%M %p') }}</div>
-            <div class="text-xs text-muted">updated {{ event.updated_at|localtime('%b %d, %I:%M %p') }}</div>
-          </td>
-          <td>
-            {% if event.match_reason %}
-              <span class="text-xs text-muted">{{ event.match_reason }}</span>
-            {% endif %}
-          </td>
-          <td>
-            <span class="badge badge-neutral">{{ event.source_type }}</span>
-            {% if event.ticket_url %}
-              <a href="{{ event.ticket_url }}" target="_blank" class="btn btn-ghost btn-sm" style="padding: 2px 4px;">🎟</a>
-            {% endif %}
-          </td>
-          <td>
-            <div class="flex gap-sm items-center" style="flex-wrap: wrap;">
-              <form method="post" action="/events/{{ event.id }}/attending">
-                <input type="hidden" name="attending" value="{{ 'false' if event.is_attending else 'true' }}">
-                <button type="submit" class="btn btn-sm {{ 'btn-secondary' if event.is_attending else 'btn-ghost' }}">
-                  {{ '✓ Going' if event.is_attending else "I'm Going" }}
-                </button>
-              </form>
-              <form method="post" action="/events/{{ event.id }}/delete"
-                    onsubmit="return confirm('Delete this event so a scan can rediscover it?')">
-                <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-error);">Delete</button>
-              </form>
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="event-list animate-in stagger-1">
+    {% for event in events %}
+    <article class="event-card">
+      <div class="event-date-block">
+        {% if event.event_date %}
+          <span class="event-month">{{ event.event_date.strftime('%b') }}</span>
+          <span class="event-day">{{ event.event_date.strftime('%d') }}</span>
+          <span class="event-year">{{ event.event_date.strftime('%Y') }}</span>
+          {% if event.event_time %}<span class="event-time">{{ event.event_time.strftime('%-I:%M %p') }}</span>{% endif %}
+        {% else %}
+          <span class="event-day">TBD</span>
+        {% endif %}
+      </div>
+
+      <div class="event-main">
+        <div class="flex items-center gap-sm" style="flex-wrap: wrap;">
+          <a href="/events?view={{ current_view }}&artist_id={{ event.artist_id }}" class="event-artist">
+            {{ event.artist.name if event.artist else 'Unknown artist' }}
+          </a>
+          {% if event.status == 'confirmed' %}
+            <span class="badge badge-success">confirmed</span>
+          {% elif event.status == 'possible' %}
+            <span class="badge badge-warning">possible</span>
+          {% elif event.status == 'rejected' %}
+            <span class="badge badge-error">rejected</span>
+          {% else %}
+            <span class="badge badge-neutral">{{ event.status }}</span>
+          {% endif %}
+          {% if event.is_attending %}<span class="badge badge-success">going</span>{% endif %}
+        </div>
+        <h3>{{ event.event_name }}</h3>
+        <p class="event-place">
+          <span>{{ event.venue }}</span>
+          <span class="text-muted">{{ event.city }}{% if event.region %}, {{ event.region }}{% endif %}</span>
+        </p>
+        <div class="event-provenance text-xs text-muted">
+          <span>{{ event.source_provider or event.source_type }}</span>
+          {% if event.match_reason %}<span>{{ event.match_reason|replace('_', ' ') }}</span>{% endif %}
+          <span>found {{ event.first_seen_at|localtime('%b %d, %Y') }}</span>
+        </div>
+      </div>
+
+      <div class="event-actions">
+        {% if event.ticket_url %}
+          <a href="{{ event.ticket_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Tickets ↗</a>
+        {% endif %}
+        <form method="post" action="/events/{{ event.id }}/attending">
+          <input type="hidden" name="attending" value="{{ 'false' if event.is_attending else 'true' }}">
+          <input type="hidden" name="return_to" value="{{ return_to }}">
+          <button type="submit" class="btn btn-sm {{ 'btn-success' if event.is_attending else 'btn-ghost' }}">
+            {{ '✓ Going' if event.is_attending else "I'm Going" }}
+          </button>
+        </form>
+        <details class="event-more">
+          <summary aria-label="More event actions">More</summary>
+          <form method="post" action="/events/{{ event.id }}/delete"
+                onsubmit="return confirm('Delete this event so a scan can rediscover it?')">
+            <input type="hidden" name="return_to" value="{{ return_to }}">
+            <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-error);">Delete event</button>
+          </form>
+        </details>
+      </div>
+    </article>
+    {% endfor %}
   </div>
+
+  {% if page_count > 1 %}
+  <nav class="pagination" aria-label="Event pages">
+    {% if previous_url %}<a href="{{ previous_url }}" class="btn btn-secondary btn-sm">← Previous</a>{% endif %}
+    <span class="text-xs text-muted">Page {{ page }} of {{ page_count }}</span>
+    {% if next_url %}<a href="{{ next_url }}" class="btn btn-secondary btn-sm">Next →</a>{% endif %}
+  </nav>
+  {% endif %}
   {% else %}
   <div class="empty-state">
     <div class="empty-icon">📅</div>
-    <p>No events found{% if filter_status or filter_artist_id %} matching your filters{% endif %}</p>
+    {% if current_view == 'upcoming' %}
+      <p>No upcoming matched events. Scanning continues for every active artist.</p>
+    {% elif current_view == 'going' %}
+      <p>No upcoming events are marked Going.</p>
+    {% else %}
+      <p>No events match this view and its filters.</p>
+    {% endif %}
   </div>
   {% endif %}
 </div>

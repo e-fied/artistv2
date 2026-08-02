@@ -28,10 +28,16 @@
 
   <!-- Stats Row -->
   <div class="stats-row animate-in stagger-1">
-    <div class="stat-card">
-      <div class="stat-label">Confirmed Events</div>
+    <a href="/events?view=upcoming&status=confirmed" class="stat-card stat-card-link">
+      <div class="stat-label">Upcoming Confirmed</div>
       <div class="stat-value" style="color: var(--status-success);">{{ total_confirmed }}</div>
-    </div>
+      <div class="stat-detail">Open events →</div>
+    </a>
+    <a href="/events?view=going" class="stat-card stat-card-link">
+      <div class="stat-label">Going</div>
+      <div class="stat-value" style="color: var(--status-success);">{{ total_attending }}</div>
+      <div class="stat-detail">Your upcoming plans →</div>
+    </a>
     <div class="stat-card">
       <div class="stat-label">Need Review</div>
       <div class="stat-value" style="color: var(--status-warning);">{{ total_possible }}</div>
@@ -41,10 +47,11 @@
       </div>
       {% endif %}
     </div>
-    <div class="stat-card">
+    <a href="/sources/health" class="stat-card stat-card-link">
       <div class="stat-label">Sources Need Attention</div>
       <div class="stat-value" style="color: {% if failing_sources > 0 %}var(--status-error){% else %}var(--text-muted){% endif %};">{{ failing_sources }}</div>
-    </div>
+      <div class="stat-detail">Open Source Health →</div>
+    </a>
     <div class="stat-card">
       <div class="stat-label">All-time Gemini Estimate</div>
       <div class="stat-value">${{ '%.4f'|format(gemini_cost_total or 0) }}</div>
@@ -92,7 +99,9 @@
 
       <div class="artist-meta">
         <span class="badge badge-type">{{ item.artist.artist_type }}</span>
-        <span>{{ item.event_count }} event{{ 's' if item.event_count != 1 else '' }}</span>
+        <a href="/events?view=upcoming&artist_id={{ item.artist.id }}">
+          {{ item.event_count }} upcoming event{{ 's' if item.event_count != 1 else '' }}
+        </a>
         {% if item.is_coming %}
           <span style="color: var(--status-success);">
             Coming {{ item.next_event_date.strftime('%b %d') if item.next_event_date else '' }}
@@ -112,23 +121,23 @@
       <div class="artist-sources">
         {% for source in item.sources %}
           {% if source.source_type == 'ticketmaster' %}
-            {% if source.last_success_at %}
+            {% if source.health_status in ['healthy', 'empty'] %}
               <span class="badge badge-success" title="Ticketmaster OK">TM ✓</span>
-            {% elif source.consecutive_failures > 0 %}
+            {% elif source.health_status in ['warning', 'error'] %}
               <span class="badge badge-error" title="Ticketmaster failing">TM ✗</span>
             {% else %}
               <span class="badge badge-neutral" title="Ticketmaster not checked">TM</span>
             {% endif %}
           {% else %}
-            {% if source.consecutive_failures >= 3 %}
+            {% if source.health_status == 'error' %}
               <span class="badge badge-error" title="{{ source.url or 'Website' }}: {{ source.last_error or (source.consecutive_failures ~ ' notices') }}">
                 Web ✗
               </span>
-            {% elif source.consecutive_failures > 0 %}
+            {% elif source.health_status == 'warning' %}
               <span class="badge badge-warning" title="{{ source.url or 'Website' }}: {{ source.last_error or (source.consecutive_failures ~ ' notice(s)') }}">
                 Web !
               </span>
-            {% elif source.last_success_at %}
+            {% elif source.health_status in ['healthy', 'empty'] %}
               <span class="badge badge-success" title="{{ source.url or 'Website' }}: OK">Web ✓</span>
             {% else %}
               <span class="badge badge-neutral" title="{{ source.url or 'Website' }}">Web</span>

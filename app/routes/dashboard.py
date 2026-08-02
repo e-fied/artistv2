@@ -28,24 +28,32 @@ def dashboard(request: Request, db: Session = Depends(get_db), view: str = "all"
     artists = db.query(Artist).order_by(Artist.name).all()
     coming_windows = get_artist_coming_windows(db, as_of=date.today())
 
-    # Aggregate counts
+    today = date.today()
+
+    # Aggregate counts should describe actionable future events, not old history.
     total_confirmed = (
         db.query(func.count(Event.id))
-        .filter(Event.status == "confirmed")
+        .filter(Event.status == "confirmed", Event.event_date >= today)
         .scalar()
         or 0
     )
     total_possible = (
         db.query(func.count(Event.id))
-        .filter(Event.status == "possible")
+        .filter(Event.status == "possible", Event.event_date >= today)
+        .scalar()
+        or 0
+    )
+    total_attending = (
+        db.query(func.count(Event.id))
+        .filter(Event.is_attending.is_(True), Event.event_date >= today)
         .scalar()
         or 0
     )
 
-    # Failing sources (3+ consecutive failures)
+    # Source Health owns the source-health classification.
     failing_sources = (
         db.query(func.count(ArtistSource.id))
-        .filter(ArtistSource.consecutive_failures >= 3)
+        .filter(ArtistSource.health_status.in_(["warning", "error"]))
         .scalar()
         or 0
     )
@@ -78,13 +86,21 @@ def dashboard(request: Request, db: Session = Depends(get_db), view: str = "all"
         sources = db.query(ArtistSource).filter(ArtistSource.artist_id == artist.id).all()
         event_count = (
             db.query(func.count(Event.id))
-            .filter(Event.artist_id == artist.id, Event.status == "confirmed")
+            .filter(
+                Event.artist_id == artist.id,
+                Event.status == "confirmed",
+                Event.event_date >= today,
+            )
             .scalar()
             or 0
         )
         possible_count = (
             db.query(func.count(Event.id))
-            .filter(Event.artist_id == artist.id, Event.status == "possible")
+            .filter(
+                Event.artist_id == artist.id,
+                Event.status == "possible",
+                Event.event_date >= today,
+            )
             .scalar()
             or 0
         )
@@ -120,6 +136,7 @@ def dashboard(request: Request, db: Session = Depends(get_db), view: str = "all"
             "artists": artist_summaries,
             "total_confirmed": total_confirmed,
             "total_possible": total_possible,
+            "total_attending": total_attending,
             "failing_sources": failing_sources,
             "last_scan": last_scan,
             "scan_interval_hours": settings.scan_interval_hours,

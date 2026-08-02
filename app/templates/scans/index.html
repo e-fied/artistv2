@@ -6,31 +6,46 @@
   <div class="page-header">
     <div>
       <h2>Scan History</h2>
-      <p class="subtitle">History of all scan runs and per-source results</p>
+      <p class="subtitle">Fast summaries with source diagnostics available when you expand a run</p>
     </div>
   </div>
 
+  <div class="card mb-lg">
+    <form method="get" action="/scans/" class="flex gap-md items-center" style="flex-wrap: wrap;">
+      <div class="form-group compact-field">
+        <label for="scan-status-filter" class="sr-only">Status</label>
+        <select id="scan-status-filter" name="status" class="form-select">
+          <option value="">All statuses</option>
+          <option value="running" {% if filter_status == 'running' %}selected{% endif %}>Running</option>
+          <option value="completed" {% if filter_status == 'completed' %}selected{% endif %}>Completed</option>
+          <option value="failed" {% if filter_status == 'failed' %}selected{% endif %}>Failed</option>
+        </select>
+      </div>
+      <div class="form-group compact-field">
+        <label for="scan-trigger-filter" class="sr-only">Trigger</label>
+        <select id="scan-trigger-filter" name="trigger" class="form-select">
+          <option value="">All triggers</option>
+          <option value="scheduled" {% if filter_trigger == 'scheduled' %}selected{% endif %}>Scheduled</option>
+          <option value="manual_single" {% if filter_trigger == 'manual_single' %}selected{% endif %}>Manual artist</option>
+          <option value="manual_all" {% if filter_trigger == 'manual_all' %}selected{% endif %}>Manual all</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-secondary btn-sm">Apply</button>
+      {% if filter_status or filter_trigger %}<a href="/scans/" class="btn btn-ghost btn-sm">Clear</a>{% endif %}
+      <span class="text-xs text-muted ml-auto">{{ total_scans }} run{{ 's' if total_scans != 1 else '' }}</span>
+    </form>
+  </div>
+
   {% if scans %}
-  <div id="scan-history" class="table-wrap animate-in stagger-1"
-       {% if has_running %}hx-get="/scans/" hx-trigger="every 5s" hx-select="#scan-history" hx-swap="outerHTML"{% endif %}>
-    <table>
-      <thead>
-        <tr>
-          <th>Status</th>
-          <th>Trigger</th>
-          <th>Artist</th>
-          <th>Started</th>
-          <th>Duration</th>
-          <th>Found</th>
-          <th>Confirmed</th>
-          <th>Possible</th>
-          <th>Sources</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for scan in scans %}
-        <tr>
-          <td>
+  <div id="scan-history" class="scan-list animate-in stagger-1"
+       {% if has_running %}hx-get="/scans/?status={{ filter_status }}&trigger={{ filter_trigger }}&page={{ page }}" hx-trigger="every 5s" hx-select="#scan-history" hx-swap="outerHTML"{% endif %}>
+    {% for scan in scans %}
+      {% set ok = scan.source_results|selectattr('fetch_success')|list|length %}
+      {% set fail = scan.source_results|rejectattr('fetch_success')|list|length %}
+      {% set structured = scan.source_results|selectattr('extraction_mode', 'equalto', 'structured')|list|length %}
+      <details class="scan-card" {% if scan.status == 'running' %}open{% endif %}>
+        <summary class="scan-summary">
+          <span class="scan-status">
             {% if scan.status == 'completed' %}
               <span class="badge badge-success">completed</span>
             {% elif scan.status == 'running' %}
@@ -38,92 +53,85 @@
             {% else %}
               <span class="badge badge-error">{{ scan.status }}</span>
             {% endif %}
-          </td>
-          <td><span class="badge badge-neutral">{{ scan.trigger }}</span></td>
-          <td>
-            {% if scan.artist %}
-              {{ scan.artist.name }}
-            {% else %}
-              <span class="text-muted">All artists</span>
-            {% endif %}
-          </td>
-          <td>
-            <span class="font-mono text-xs">{{ scan.started_at|localtime }}</span>
-          </td>
-          <td>
-            {% if scan.completed_at and scan.started_at %}
-              <span class="font-mono text-xs">
-                {{ ((scan.completed_at - scan.started_at).total_seconds())|int }}s
-              </span>
-              <div class="text-xs text-muted">done {{ scan.completed_at|localtime }}</div>
-            {% else %}
-              <span class="text-muted">—</span>
-            {% endif %}
-          </td>
-          <td class="font-mono">{{ scan.events_found }}</td>
-          <td class="font-mono" style="color: var(--status-success);">{{ scan.new_confirmed }}</td>
-          <td class="font-mono" style="color: var(--status-warning);">{{ scan.new_possible }}</td>
-          <td>
-            {% if scan.source_results %}
-              {% set ok = scan.source_results|selectattr('fetch_success')|list|length %}
-              {% set fail = scan.source_results|rejectattr('fetch_success')|list|length %}
-              <span class="text-xs">
-                {% if ok > 0 %}<span style="color: var(--status-success);">{{ ok }}✓</span>{% endif %}
-                {% if fail > 0 %}<span style="color: var(--status-error);"> {{ fail }}✗</span>{% endif %}
-              </span>
-            {% endif %}
-            {% if scan.id in debug_scan_ids %}
-              <a href="/scans/{{ scan.id }}/debug" hx-boost="false" class="btn btn-ghost btn-sm" style="padding: 2px 6px;">Debug</a>
-            {% endif %}
-          </td>
-        </tr>
-        {% if scan.source_results %}
-          <tr>
-            <td colspan="9" style="padding: 0 var(--space-md) var(--space-sm);">
-              <div class="text-xs text-muted" style="display: grid; gap: 4px;">
-                {% for source in scan.source_results %}
-                  <div>
-                    <span class="badge {% if source.fetch_success %}badge-success{% else %}badge-error{% endif %}">
-                      {{ source.source_type }}
-                    </span>
-                    <span class="font-mono">
-                      mode={{ source.fetch_mode_used or 'n/a' }}
-                      extracted={{ source.events_extracted }}
-                      duration={{ '%.1f'|format(source.fetch_duration_seconds or 0) }}s
-                      {% if source.llm_model %}
-                        llm={{ source.llm_model }}
-                        tokens={{ source.llm_input_tokens or 0 }}/{{ source.llm_output_tokens or 0 }}
-                        cost=${{ '%.5f'|format(source.llm_estimated_cost_usd or 0) }}{% if source.llm_cost_is_estimated %} est{% endif %}
-                      {% endif %}
-                    </span>
-                    {% if source.fetch_error %}
-                      <span style="color: {% if source.fetch_success %}var(--status-warning){% else %}var(--status-error){% endif %};">
-                        {{ source.fetch_error }}
-                      </span>
-                    {% endif %}
-                  </div>
-                {% endfor %}
-              </div>
-            </td>
-          </tr>
-        {% endif %}
-        {% if scan.error_summary %}
-        <tr>
-          <td colspan="9" style="padding: 0 var(--space-md) var(--space-sm);">
-            <div class="text-xs" style="color: {% if scan.status == 'running' %}var(--status-warning){% else %}var(--status-error){% endif %};">
-              {% if scan.status == 'running' %}Progress{% else %}Note{% endif %}: {{ scan.error_summary }}
+          </span>
+          <span class="scan-identity">
+            <strong>{{ scan.artist.name if scan.artist else 'All artists' }}</strong>
+            <span class="text-xs text-muted">{{ scan.trigger|replace('_', ' ') }}</span>
+          </span>
+          <span class="scan-started font-mono text-xs">{{ scan.started_at|localtime }}</span>
+          <span class="scan-metrics">
+            <span title="Events found">{{ scan.events_found }} found</span>
+            {% if scan.new_confirmed %}<span style="color: var(--status-success);">{{ scan.new_confirmed }} new</span>{% endif %}
+            {% if scan.new_possible %}<span style="color: var(--status-warning);">{{ scan.new_possible }} review</span>{% endif %}
+          </span>
+          <span class="scan-source-count text-xs">
+            {% if ok %}<span style="color: var(--status-success);">{{ ok }} healthy</span>{% endif %}
+            {% if fail %}<span style="color: var(--status-error);">{{ fail }} failed</span>{% endif %}
+            {% if structured %}<span class="badge badge-neutral">{{ structured }} LLM-free</span>{% endif %}
+          </span>
+          <span class="scan-chevron" aria-hidden="true">⌄</span>
+        </summary>
+
+        <div class="scan-details">
+          {% if scan.error_summary %}
+            <div class="alert {% if scan.status != 'running' %}alert-warning{% endif %} text-sm mb-md">
+              <strong>{% if scan.status == 'running' %}Progress{% else %}Run note{% endif %}:</strong>
+              {{ scan.error_summary }}
             </div>
-          </td>
-        </tr>
-        {% endif %}
-        {% endfor %}
-      </tbody>
-    </table>
+          {% endif %}
+
+          {% if scan.completed_at and scan.started_at %}
+          <div class="text-xs text-muted mb-md">
+            Finished {{ scan.completed_at|localtime }} · {{ ((scan.completed_at - scan.started_at).total_seconds())|int }}s
+          </div>
+          {% endif %}
+
+          <div class="scan-source-list">
+          {% for source in scan.source_results %}
+            <div class="scan-source-row">
+              <span class="badge {% if source.health_status == 'empty' %}badge-neutral{% elif source.fetch_success %}badge-success{% else %}badge-error{% endif %}">
+                {{ source.source_type }}
+              </span>
+              <div>
+                <div class="flex gap-sm items-center" style="flex-wrap: wrap;">
+                  <strong class="text-sm">{{ source.extraction_mode or source.fetch_mode_used or 'unknown mode' }}</strong>
+                  {% if source.structured_provider %}<span class="badge badge-neutral">{{ source.structured_provider }}</span>{% endif %}
+                  <span class="text-xs text-muted">{{ source.events_extracted }} extracted · {{ '%.1f'|format(source.fetch_duration_seconds or 0) }}s</span>
+                  {% if source.llm_model %}
+                    <span class="text-xs text-muted">{{ source.llm_model }} · {{ source.llm_input_tokens or 0 }}/{{ source.llm_output_tokens or 0 }} tokens · ${{ '%.5f'|format(source.llm_estimated_cost_usd or 0) }}</span>
+                  {% elif source.extraction_mode == 'structured' %}
+                    <span class="text-xs" style="color: var(--status-success);">Gemini bypassed</span>
+                  {% endif %}
+                </div>
+                {% if source.fetch_error %}
+                  <div class="text-xs mt-sm" style="color: {% if source.fetch_success %}var(--status-warning){% else %}var(--status-error){% endif %};">{{ source.fetch_error }}</div>
+                {% endif %}
+              </div>
+            </div>
+          {% else %}
+            <p class="text-sm text-muted">No per-source details were recorded.</p>
+          {% endfor %}
+          </div>
+
+          {% if scan.id in debug_scan_ids %}
+            <a href="/scans/{{ scan.id }}/debug" hx-boost="false" class="btn btn-secondary btn-sm mt-md">Open debug capture</a>
+          {% endif %}
+        </div>
+      </details>
+    {% endfor %}
   </div>
+
+  {% if page_count > 1 %}
+  <nav class="pagination" aria-label="Scan pages">
+    {% if previous_url %}<a href="{{ previous_url }}" class="btn btn-secondary btn-sm">← Previous</a>{% endif %}
+    <span class="text-xs text-muted">Page {{ page }} of {{ page_count }}</span>
+    {% if next_url %}<a href="{{ next_url }}" class="btn btn-secondary btn-sm">Next →</a>{% endif %}
+  </nav>
+  {% endif %}
   {% else %}
   <div class="empty-state">
     <div class="empty-icon">📊</div>
-    <p>No scan history yet — scans will appear here after the first check</p>
+    <p>No scans match these filters.</p>
     <a href="/" class="btn btn-secondary">Back to Dashboard</a>
   </div>
   {% endif %}

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
@@ -24,17 +25,62 @@ def events_page(
     db: Session = Depends(get_db),
     status: str = "",
     artist_id: int = 0,
+    view: str = "upcoming",
+    page: int = 1,
 ):
-    """Render the event history page with optional filters."""
+    """Render actionable events first, with history available on demand."""
+    allowed_views = {"upcoming", "going", "past", "all"}
+    allowed_statuses = {"confirmed", "possible", "rejected", "expired"}
+    view = view if view in allowed_views else "upcoming"
+    status = status if status in allowed_statuses else ""
+    page = max(page, 1)
+    per_page = 40
+    today = date.today()
+
     query = db.query(Event).options(joinedload(Event.artist))
+
+    if view == "upcoming":
+        query = query.filter(
+            Event.event_date >= today,
+            Event.status.in_(["confirmed", "possible"]),
+        )
+    elif view == "going":
+        query = query.filter(Event.is_attending.is_(True), Event.event_date >= today)
+    elif view == "past":
+        query = query.filter(
+            (Event.event_date < today) | (Event.status == "expired")
+        )
 
     if status:
         query = query.filter(Event.status == status)
     if artist_id:
         query = query.filter(Event.artist_id == artist_id)
 
-    events = query.order_by(Event.event_date.desc().nullslast(), Event.first_seen_at.desc()).limit(200).all()
+    total_events = query.count()
+    if view in {"upcoming", "going"}:
+        query = query.order_by(
+            Event.event_date.asc().nullslast(),
+            Event.event_time.asc().nullslast(),
+            Event.artist_id.asc(),
+        )
+    else:
+        query = query.order_by(
+            Event.event_date.desc().nullslast(), Event.first_seen_at.desc()
+        )
+
+    events = query.offset((page - 1) * per_page).limit(per_page).all()
     artists = db.query(Artist).order_by(Artist.name).all()
+
+    filter_params = {"view": view}
+    if status:
+        filter_params["status"] = status
+    if artist_id:
+        filter_params["artist_id"] = artist_id
+    return_to = f"/events?{urlencode(filter_params)}"
+    page_count = max(1, (total_events + per_page - 1) // per_page)
+
+    def page_url(target_page: int) -> str:
+        return f"{return_to}&page={target_page}"
 
     return request.app.state.templates.TemplateResponse(request=request, name="events/index.html", context={
             "request": request,
@@ -42,31 +88,48 @@ def events_page(
             "artists": artists,
             "filter_status": status,
             "filter_artist_id": artist_id,
+            "current_view": view,
+            "total_events": total_events,
+            "page": page,
+            "page_count": page_count,
+            "previous_url": page_url(page - 1) if page > 1 else None,
+            "next_url": page_url(page + 1) if page < page_count else None,
+            "return_to": return_to,
         },
     )
 
 
+def _safe_events_return(return_to: str) -> str:
+    """Keep action redirects inside the Events screen."""
+    return return_to if return_to.startswith("/events?") else "/events?view=upcoming"
+
+
 @router.post("/events/{event_id}/delete")
-def delete_event(event_id: int, db: Session = Depends(get_db)):
+def delete_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    return_to: str = Form("/events?view=upcoming"),
+):
     """Delete one event so a future scan can rediscover it."""
     event = db.query(Event).filter(Event.id == event_id).first()
     if event:
         db.delete(event)
         db.commit()
-    return RedirectResponse(url="/events", status_code=303)
+    return RedirectResponse(url=_safe_events_return(return_to), status_code=303)
 
 
 @router.post("/events/{event_id}/attending")
 def toggle_event_attending(
     event_id: int,
     attending: bool = Form(False),
+    return_to: str = Form("/events?view=upcoming"),
     db: Session = Depends(get_db),
 ):
     """Mark one event as attending without pausing future artist scans."""
     event = db.query(Event).filter(Event.id == event_id).first()
     if event:
         apply_event_action(db, event_id, "going" if attending else "not_going")
-    return RedirectResponse(url="/events", status_code=303)
+    return RedirectResponse(url=_safe_events_return(return_to), status_code=303)
 
 
 @router.post("/events/delete-filtered")
@@ -74,6 +137,7 @@ def delete_filtered_events(
     db: Session = Depends(get_db),
     status: str = Form(""),
     artist_id: int = Form(0),
+    return_to: str = Form("/events?view=upcoming"),
 ):
     """Delete events matching the current filter for testing scan rediscovery."""
     query = db.query(Event)
@@ -85,7 +149,7 @@ def delete_filtered_events(
     for event in query.all():
         db.delete(event)
     db.commit()
-    return RedirectResponse(url="/events", status_code=303)
+    return RedirectResponse(url=_safe_events_return(return_to), status_code=303)
 
 
 # ── Review Inbox ───────────────────────────────────────────────────────────
