@@ -34,6 +34,12 @@ class ExtractedEvent(BaseModel):
     ticket_url: Optional[str] = Field(
         default=None, description="Direct ticket purchase URL if found"
     )
+    source_provider: Optional[str] = Field(
+        default=None, description="Structured source provider when known"
+    )
+    source_event_id: Optional[str] = Field(
+        default=None, description="Provider event identifier when known"
+    )
     evidence_text: str = Field(
         description="Exact text snippet from the page showing this event"
     )

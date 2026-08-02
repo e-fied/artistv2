@@ -84,6 +84,8 @@ def process_discovered_event(
         source_url=event_data.get("source_url") or None,
         source_type=source_type,
         ticketmaster_event_id=event_data.get("ticketmaster_event_id") or None,
+        source_provider=event_data.get("source_provider") or None,
+        source_event_id=event_data.get("source_event_id") or None,
         status=status,
         confidence_score=match.confidence,
         match_reason=match.reason,
@@ -213,6 +215,8 @@ def _upsert_event(
     source_url: Optional[str],
     source_type: str,
     ticketmaster_event_id: Optional[str],
+    source_provider: Optional[str],
+    source_event_id: Optional[str],
     status: str,
     confidence_score: float,
     match_reason: Optional[str],
@@ -237,6 +241,8 @@ def _upsert_event(
         event_time=event_time,
         ticket_url=ticket_url,
         ticketmaster_event_id=ticketmaster_event_id,
+        source_provider=source_provider,
+        source_event_id=source_event_id,
     )
     if existing:
         _update_existing_event(
@@ -248,6 +254,8 @@ def _upsert_event(
             ticket_url=ticket_url,
             source_url=source_url,
             ticketmaster_event_id=ticketmaster_event_id,
+            source_provider=source_provider,
+            source_event_id=source_event_id,
             status=status,
             confidence_score=confidence_score,
             match_reason=match_reason,
@@ -270,6 +278,8 @@ def _upsert_event(
         source_url=source_url,
         source_type=source_type,
         ticketmaster_event_id=ticketmaster_event_id,
+        source_provider=source_provider,
+        source_event_id=source_event_id,
         status=status,
         confidence_score=confidence_score,
         match_reason=match_reason,
@@ -293,7 +303,22 @@ def _find_existing_event(
     event_time: Optional[time],
     ticket_url: Optional[str],
     ticketmaster_event_id: Optional[str],
+    source_provider: Optional[str],
+    source_event_id: Optional[str],
 ) -> Optional[Event]:
+    if source_provider and source_event_id:
+        event = (
+            db.query(Event)
+            .filter(
+                Event.artist_id == artist_id,
+                Event.source_provider == source_provider,
+                Event.source_event_id == source_event_id,
+            )
+            .first()
+        )
+        if event:
+            return event
+
     if ticketmaster_event_id:
         event = (
             db.query(Event)
@@ -349,6 +374,8 @@ def _update_existing_event(event: Event, **values) -> None:
         "ticket_url",
         "source_url",
         "ticketmaster_event_id",
+        "source_provider",
+        "source_event_id",
         "match_reason",
         "evidence_text",
         "matched_location_profile_id",
@@ -423,6 +450,8 @@ def _merge_rows(survivor: Event, rows: list[Event]) -> None:
         "ticket_url",
         "source_url",
         "ticketmaster_event_id",
+        "source_provider",
+        "source_event_id",
         "evidence_text",
         "region",
         "country",

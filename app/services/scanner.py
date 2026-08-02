@@ -34,8 +34,11 @@ from app.services.notifier import (
     send_telegram,
 )
 from app.services.ticketmaster import TicketmasterClient
+from app.services.structured_sources import extract_structured_events
 from app.services.debug_capture import append_source_debug, init_scan_debug
 from app.services.artist_status import resume_artists_ready_for_scan
+from app.services.crawler import CrawlerService, hash_content
+from app.services.extractor import ExtractorService
 
 logger = logging.getLogger(__name__)
 
@@ -236,6 +239,7 @@ def _scan_single_artist(
             artist_source_id=tm_source.id,
             source_type="ticketmaster",
             fetch_mode_used="ticketmaster",
+            extraction_mode="ticketmaster",
         )
 
         try:
@@ -378,9 +382,6 @@ def _scan_single_artist(
         db.add(source_result)
 
     # ── Web Sources ──
-    from app.services.crawler import CrawlerService, hash_content
-    from app.services.extractor import ExtractorService
-
     web_sources = (
         db.query(ArtistSource)
         .filter(
@@ -424,6 +425,7 @@ def _scan_single_artist(
                         use_content_cache=use_content_cache,
                     ):
                         source_result.events_extracted = 0
+                        source_result.extraction_mode = "cache"
                         w_source.last_success_at = datetime.utcnow()
                         w_source.consecutive_failures = 0
                         w_source.last_error = None
@@ -445,20 +447,39 @@ def _scan_single_artist(
                         db.add(source_result)
                         continue
                     
-                    _set_scan_progress(
-                        db,
-                        scan_run_id,
-                        f"{artist.name}: sending {len(cleaned_md)} cleaned chars to Gemini",
-                    )
-                    extraction = extractor.extract_events(cleaned_md, artist.name)
-                    _apply_llm_usage_to_source_result(source_result, extractor.last_debug)
+                    structured = extract_structured_events(cleaned_md, artist.name)
+                    if structured:
+                        extraction = structured.result
+                        source_result.extraction_mode = "structured"
+                        source_result.structured_provider = ",".join(structured.providers)
+                        extractor.last_debug = {
+                            "bypassed": True,
+                            "bypass_reason": "structured_event_adapter",
+                            "providers": list(structured.providers),
+                            "input_markdown_chars": len(cleaned_md),
+                            "parsed_response": extraction.model_dump(),
+                        }
+                        _set_scan_progress(
+                            db,
+                            scan_run_id,
+                            f"{artist.name}: parsed {len(extraction.events)} structured widget events (Gemini bypassed)",
+                        )
+                    else:
+                        _set_scan_progress(
+                            db,
+                            scan_run_id,
+                            f"{artist.name}: sending {len(cleaned_md)} cleaned chars to Gemini",
+                        )
+                        extraction = extractor.extract_events(cleaned_md, artist.name)
+                        source_result.extraction_mode = "gemini"
+                        _apply_llm_usage_to_source_result(source_result, extractor.last_debug)
                     processed_events = []
                     if extraction is not None:
                         source_result.events_extracted = len(extraction.events)
                         _set_scan_progress(
                             db,
                             scan_run_id,
-                            f"{artist.name}: Gemini extracted {source_result.events_extracted} web events",
+                            f"{artist.name}: extracted {source_result.events_extracted} web events",
                         )
                         
                         for ev in extraction.events:
@@ -472,6 +493,8 @@ def _scan_single_artist(
                                 "date": ev.date,
                                 "time": ev.time,
                                 "ticket_url": ev.ticket_url,
+                                "source_provider": ev.source_provider,
+                                "source_event_id": ev.source_event_id,
                                 "source_url": w_source.url,
                                 "evidence_text": ev.evidence_text
                             }

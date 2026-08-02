@@ -140,8 +140,10 @@ APScheduler (every N hours)
        │    │    ├─ CrawlerService.fetch_markdown(url)
        │    │    │   ├─ Try Crawl4AI sidecar (http://crawl4ai:11235/crawl)
        │    │    │   └─ Fallback to Firecrawl cloud API
-       │    │    ├─ CrawlerService.clean_markdown() → cap at 50k chars
-       │    │    └─ ExtractorService.extract_events() → Gemini structured JSON
+       │    │    ├─ Structured adapters → JSON-LD, Seated, Punchup, Upnex, Bandsintown
+       │    │    │   └─ Canonical events bypass Gemini entirely
+       │    │    ├─ CrawlerService.clean_markdown() → preserve adapter events, cap generic text
+       │    │    └─ Generic pages only → ExtractorService → Gemini structured JSON
        │    │
        │    └─▶ event_lifecycle.process_discovered_event() for each discovery:
        │         ├─ match to global Home Area + per-artist Travel Cities
@@ -294,6 +296,7 @@ artistv2/
 │   │   ├── extractor.py        # ExtractorService: Gemini structured extraction from markdown
 │   │   ├── autofind.py         # auto_find_tour_page() — Gemini + Google Search grounding
 │   │   ├── event_lifecycle.py  # performance identity, status, dedup, notification state
+│   │   ├── structured_sources.py # canonical adapter seam and LLM-free extraction
 │   │   ├── location_matcher.py # haversine_km(), match_event_to_locations(), get_profiles_for_artist()
 │   │   ├── ticketmaster.py     # TicketmasterClient: attraction search, event search, geo-filtering
 │   │   └── notifier.py         # send_telegram(), format_event_notification(), format_review_summary()

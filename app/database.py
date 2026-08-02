@@ -56,6 +56,14 @@ def ensure_sqlite_schema() -> None:
                 "UPDATE events SET notification_status = "
                 "CASE WHEN is_attending = 1 THEN 'attending' ELSE 'sent' END"
             ))
+        if "source_provider" not in event_columns:
+            conn.execute(text("ALTER TABLE events ADD COLUMN source_provider VARCHAR(50)"))
+        if "source_event_id" not in event_columns:
+            conn.execute(text("ALTER TABLE events ADD COLUMN source_event_id VARCHAR(200)"))
+        if "extraction_mode" not in scan_source_result_columns:
+            conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN extraction_mode VARCHAR(30)"))
+        if "structured_provider" not in scan_source_result_columns:
+            conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN structured_provider VARCHAR(200)"))
         if "llm_model" not in scan_source_result_columns:
             conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN llm_model VARCHAR(80)"))
         if "llm_input_tokens" not in scan_source_result_columns:

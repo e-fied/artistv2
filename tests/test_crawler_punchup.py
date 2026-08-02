@@ -4,6 +4,7 @@ import httpx
 
 from app.config import AppSettings
 from app.services.crawler import CrawlerService
+from app.services.structured_sources import extract_structured_events
 
 
 def test_find_punchup_comedian_id_from_escaped_next_data():
@@ -95,6 +96,52 @@ def test_find_seated_artist_id_from_notification_link():
     assert artist_id == "992ceda5-c055-4a4b-b6ee-6e92d81f8d57"
 
 
+def test_find_bandsintown_widget_config_uses_page_hostname_app_id():
+    crawler = CrawlerService(AppSettings())
+    config = crawler._find_bandsintown_widget_config(
+        "https://pennandteller.com/tour-dates/",
+        '''
+        <script src="https://widgetv3.bandsintown.com/main.min.js"></script>
+        <a class="bit-widget-initializer" data-artist-name="id_148787" data-app-id=""></a>
+        ''',
+    )
+
+    assert config == {
+        "artist_name": "id_148787",
+        "app_id": "js_pennandteller.com",
+    }
+
+
+def test_bandsintown_api_produces_canonical_event_marker():
+    crawler = CrawlerService(AppSettings())
+    markdown = crawler._bandsintown_api_to_markdown(
+        [
+            {
+                "id": "108144561",
+                "starts_at": "2026-09-10T19:30:00",
+                "title": "Piff & Pop",
+                "artist": {"name": "Penn and Teller"},
+                "venue": {
+                    "name": "Bournemouth Pavilion Theatre",
+                    "city": "Bournemouth",
+                    "region": "",
+                    "country": "United Kingdom",
+                },
+                "offers": [{"url": "https://tickets.example/penn"}],
+            }
+        ]
+    )
+
+    extraction = extract_structured_events(markdown, "Penn and Teller")
+    assert extraction is not None
+    assert extraction.providers == ("bandsintown",)
+    event = extraction.result.events[0]
+    assert event.date == "2026-09-10"
+    assert event.time == "19:30"
+    assert event.city == "Bournemouth"
+    assert event.source_event_id == "108144561"
+
+
 def test_seated_api_to_markdown_uses_relationship_order_and_end_date():
     crawler = CrawlerService(AppSettings())
     data = {
@@ -137,6 +184,10 @@ def test_seated_api_to_markdown_uses_relationship_order_and_end_date():
     assert markdown is not None
     assert markdown.index("Empire Music Festival") < markdown.index("Ember Shores")
     assert "2026-11-19 to 2026-11-22 | Ember Shores" in markdown
+    extraction = extract_structured_events(markdown, "ILLENIUM")
+    assert extraction is not None
+    assert extraction.providers == ("seated",)
+    assert extraction.result.events[0].city == "Guatemala City"
 
 
 def test_fetch_seated_api_retries_406_with_fallback_headers():
@@ -296,6 +347,10 @@ def test_upnex_api_to_markdown_includes_live_events_and_ticket_links():
     assert "Killers of Kill Tony" in markdown
     assert "Tickets: https://tickets.example.com/denver" in markdown
     assert "Hidden Venue" not in markdown
+    extraction = extract_structured_events(markdown, "Ari Matti")
+    assert extraction is not None
+    assert extraction.providers == ("upnex",)
+    assert extraction.result.events[0].city == "Denver"
 
 
 def test_fetch_embedded_events_enriches_upnex_event_portal(monkeypatch):
@@ -492,3 +547,42 @@ def test_punchup_api_to_markdown_includes_visible_shows_only():
     assert "https://example.com/tickets" in markdown
     assert "https://punchup.live/e/visible-show" in markdown
     assert "Secret Venue" not in markdown
+    extraction = extract_structured_events(markdown, "Timmy No Brakes")
+    assert extraction is not None
+    assert extraction.providers == ("punchup",)
+    assert extraction.result.events[0].city == "Albuquerque"
+
+
+def test_json_ld_event_produces_canonical_marker():
+    crawler = CrawlerService(AppSettings())
+    markdown = crawler._json_ld_events_to_markdown(
+        '''
+        <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "Event",
+          "@id": "show-json-1",
+          "name": "Live Comedy",
+          "startDate": "2026-10-10T20:00:00-07:00",
+          "location": {
+            "@type": "Place",
+            "name": "Queen Elizabeth Theatre",
+            "address": {
+              "addressLocality": "Vancouver",
+              "addressRegion": "BC",
+              "addressCountry": "Canada"
+            }
+          },
+          "offers": {"url": "https://tickets.example/json-1"}
+        }
+        </script>
+        '''
+    )
+
+    extraction = extract_structured_events(markdown, "Test Comic")
+    assert extraction is not None
+    assert extraction.providers == ("json_ld",)
+    event = extraction.result.events[0]
+    assert event.date == "2026-10-10"
+    assert event.time == "20:00"
+    assert event.city == "Vancouver"

@@ -9,12 +9,13 @@ import re
 from datetime import datetime, timezone
 from html import unescape
 from typing import Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 import httpx
 from firecrawl import FirecrawlApp
 
 from app.config import AppSettings
+from app.services.structured_sources import STRUCTURED_EVENT_PREFIX, event_marker
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +172,15 @@ class CrawlerService:
                     logger.debug(f"JSON-LD event enrichment failed for {url}: {e}")
 
                 try:
+                    bandsintown_markdown = self._fetch_bandsintown_events_markdown(
+                        client, url, page_html
+                    )
+                    if bandsintown_markdown:
+                        sections.append(bandsintown_markdown)
+                except Exception as e:
+                    logger.debug(f"Bandsintown event enrichment failed for {url}: {e}")
+
+                try:
                     upnex_markdown = self._fetch_upnex_events_markdown(client, page_html)
                     if upnex_markdown:
                         sections.append(upnex_markdown)
@@ -222,6 +232,54 @@ class CrawlerService:
         )
         api_response.raise_for_status()
         return self._upnex_api_to_markdown(api_response.json())
+
+    def _fetch_bandsintown_events_markdown(
+        self,
+        client: httpx.Client,
+        page_url: str,
+        page_html: str,
+    ) -> Optional[str]:
+        """Fetch events from a Bandsintown widget using its public widget endpoint."""
+        config = self._find_bandsintown_widget_config(page_url, page_html)
+        if not config:
+            return None
+
+        api_response = client.get(
+            "https://rest.bandsintown.com/V4/artists/"
+            f"{quote(config['artist_name'], safe='')}/events/",
+            params={"app_id": config["app_id"]},
+            headers={"Accept": "application/json"},
+        )
+        api_response.raise_for_status()
+        return self._bandsintown_api_to_markdown(api_response.json())
+
+    def _find_bandsintown_widget_config(
+        self,
+        page_url: str,
+        page_html: str,
+    ) -> Optional[dict[str, str]]:
+        """Read artist and app identifiers from Bandsintown initializer markup."""
+        tags = re.findall(r"<a\b[^>]*>", page_html, flags=re.IGNORECASE | re.DOTALL)
+        for tag in tags:
+            if "bit-widget-initializer" not in tag:
+                continue
+            attrs = {
+                key.casefold(): unescape(value).strip()
+                for key, _quote_char, value in re.findall(
+                    r"([\w-]+)\s*=\s*([\"'])(.*?)\2",
+                    tag,
+                    flags=re.DOTALL,
+                )
+            }
+            artist_name = attrs.get("data-artist-name", "")
+            if not artist_name:
+                continue
+            hostname = urlparse(page_url).hostname or "tourtracker"
+            return {
+                "artist_name": artist_name,
+                "app_id": attrs.get("data-app-id") or f"js_{hostname}",
+            }
+        return None
 
     def _find_upnex_event_portal_config(self, page_html: str) -> Optional[dict[str, str]]:
         """Find Upnex event portal credentials from inline initEvents config."""
@@ -551,6 +609,35 @@ class CrawlerService:
             if ticket_url:
                 line = f"{line} | Tickets: {ticket_url}"
             lines.append(line)
+            address_data = location.get("address") if isinstance(location, dict) else {}
+            city = ""
+            region = ""
+            country = ""
+            if isinstance(address_data, dict):
+                city = self._json_ld_text(address_data.get("addressLocality"))
+                region = self._json_ld_text(address_data.get("addressRegion"))
+                country = self._json_ld_text(address_data.get("addressCountry"))
+            if not city and address:
+                city, region, country = self._split_structured_location(address)
+            event_date, event_time = self._structured_datetime_parts(date)
+            if city and venue:
+                lines.append(
+                    event_marker(
+                        "json_ld",
+                        {
+                            "source_event_id": self._json_ld_text(event.get("@id") or event.get("url")),
+                            "event_name": name,
+                            "date": event_date,
+                            "time": event_time,
+                            "venue": venue,
+                            "city": city,
+                            "region": region,
+                            "country": country,
+                            "ticket_url": ticket_url,
+                            "evidence_text": line[2:500],
+                        },
+                    )
+                )
 
         return "\n".join(lines)
 
@@ -706,6 +793,36 @@ class CrawlerService:
             if ticket_url:
                 line = f"{line} | Tickets: {ticket_url}"
             lines.append(line)
+            city, region, country = self._split_structured_location(address)
+            event_date, event_time = self._structured_datetime_parts(
+                attrs.get("starts-at-local")
+                or attrs.get("starts-at")
+                or attrs.get("starts-at-date-local")
+                or attrs.get("starts-at-short")
+            )
+            event_time = (
+                event_time
+                or attrs.get("starts-at-time-local")
+                or attrs.get("starts-at-time")
+            )
+            if city:
+                lines.append(
+                    event_marker(
+                        "seated",
+                        {
+                            "source_event_id": event.get("id"),
+                            "event_name": details or artist_name,
+                            "date": event_date,
+                            "time": event_time,
+                            "venue": venue,
+                            "city": city,
+                            "region": region,
+                            "country": country,
+                            "ticket_url": ticket_url,
+                            "evidence_text": line[2:500],
+                        },
+                    )
+                )
 
         return "\n".join(lines)
 
@@ -768,6 +885,26 @@ class CrawlerService:
             if event_url:
                 line = f"{line} | Event page: {event_url}"
             lines.append(line)
+            city, region, country = self._split_structured_location(location)
+            event_date, event_time = self._structured_datetime_parts(date)
+            if city:
+                lines.append(
+                    event_marker(
+                        "punchup",
+                        {
+                            "source_event_id": event_id,
+                            "event_name": title,
+                            "date": event_date,
+                            "time": event_time,
+                            "venue": venue,
+                            "city": city,
+                            "region": region,
+                            "country": country,
+                            "ticket_url": ticket_url or event_url,
+                            "evidence_text": line[2:500],
+                        },
+                    )
+                )
 
         return "\n".join(lines)
 
@@ -824,6 +961,30 @@ class CrawlerService:
                 line = f"{line} | {label}: {url}"
 
             lines.append(line)
+            parsed_city, parsed_region, parsed_country = self._split_structured_location(city)
+            if not parsed_city:
+                parsed_city = city
+            if not state:
+                state = parsed_region
+            event_date, event_time = self._structured_datetime_parts(start_date)
+            if parsed_city:
+                lines.append(
+                    event_marker(
+                        "upnex",
+                        {
+                            "source_event_id": event.get("id"),
+                            "event_name": title or location_name,
+                            "date": event_date,
+                            "time": event_time,
+                            "venue": venue,
+                            "city": parsed_city,
+                            "region": state,
+                            "country": parsed_country,
+                            "ticket_url": ticket_links[0][1] if ticket_links else None,
+                            "evidence_text": line[2:500],
+                        },
+                    )
+                )
 
         if live_events == 0:
             return None
@@ -868,6 +1029,105 @@ class CrawlerService:
             return value.strip()
         return str(value).strip()
 
+    def _bandsintown_api_to_markdown(self, data) -> Optional[str]:
+        """Convert Bandsintown widget events into readable and canonical lines."""
+        if not isinstance(data, list) or not data:
+            return None
+        artist_name = self._upnex_text((data[0].get("artist") or {}).get("name")) or "Artist"
+        lines = [f"Bandsintown widget tour events for {artist_name}:"]
+        for event in data:
+            if not isinstance(event, dict):
+                continue
+            venue = event.get("venue") or {}
+            if not isinstance(venue, dict):
+                venue = {}
+            event_date, event_time = self._structured_datetime_parts(
+                event.get("starts_at") or event.get("datetime")
+            )
+            venue_name = self._upnex_text(venue.get("name")) or "Venue TBD"
+            city = self._upnex_text(venue.get("city"))
+            region = self._upnex_text(venue.get("region"))
+            country = self._upnex_text(venue.get("country"))
+            if not city:
+                city, region, country = self._split_structured_location(
+                    self._upnex_text(venue.get("location"))
+                )
+            title = self._upnex_text(event.get("title")) or artist_name
+            offers = event.get("offers") or []
+            ticket_url = next(
+                (
+                    self._upnex_text(offer.get("url"))
+                    for offer in offers
+                    if isinstance(offer, dict) and offer.get("url")
+                ),
+                self._upnex_text(event.get("url")),
+            )
+            line = f"- {event_date}"
+            if event_time:
+                line += f"T{event_time}"
+            line += f" | {title} | {venue_name} | {city}"
+            if region:
+                line += f", {region}"
+            if ticket_url:
+                line += f" | Tickets: {ticket_url}"
+            lines.append(line)
+            if city:
+                lines.append(
+                    event_marker(
+                        "bandsintown",
+                        {
+                            "source_event_id": event.get("id"),
+                            "event_name": title,
+                            "date": event_date,
+                            "time": event_time,
+                            "venue": venue_name,
+                            "city": city,
+                            "region": region,
+                            "country": country,
+                            "ticket_url": ticket_url,
+                            "evidence_text": line[2:500],
+                        },
+                    )
+                )
+        return "\n".join(lines) if len(lines) > 1 else None
+
+    def _structured_datetime_parts(self, value) -> tuple[str, Optional[str]]:
+        """Return an ISO date and optional local time from common adapter values."""
+        text = self._upnex_text(value)
+        if not text or text == "Date TBD":
+            return "TBD", None
+        normalized = text.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+            return parsed.date().isoformat(), parsed.strftime("%H:%M")
+        except ValueError:
+            date_match = re.search(r"\b\d{4}-\d{2}-\d{2}\b", text)
+            return (date_match.group(0) if date_match else "TBD"), None
+
+    def _split_structured_location(self, value: str) -> tuple[str, str, str]:
+        """Split widget location text into city, region, and country."""
+        parts = [part.strip() for part in (value or "").split(",") if part.strip()]
+        if not parts:
+            return "", "", ""
+        if len(parts) == 1:
+            return parts[0], "", ""
+
+        countries = {
+            "canada", "ca", "united states", "united states of america", "usa", "us",
+            "united kingdom", "uk", "australia", "mexico", "germany", "spain",
+            "guatemala", "france", "italy", "ireland", "netherlands",
+        }
+        country = parts[-1] if parts[-1].casefold() in countries else ""
+        remaining = parts[:-1] if country else parts
+        if len(remaining) == 1:
+            return remaining[0], "", country
+        region = remaining[-1]
+        city = remaining[-2]
+        # With only city + country, the second value is not a region.
+        if country and len(remaining) == 1:
+            region = ""
+        return city, region, country
+
     def clean_markdown(self, markdown: str) -> str:
         """Strip links, images, and boilerplate from markdown to save tokens."""
         if not markdown:
@@ -875,6 +1135,7 @@ class CrawlerService:
         
         lines = markdown.split("\n")
         cleaned_lines = []
+        structured_lines = []
         
         for line in lines:
             line = line.strip()
@@ -884,7 +1145,13 @@ class CrawlerService:
             # Very basic cleanup — the LLM handles noise well, 
             # we mainly just want to remove obvious boilerplate if needed.
             # But preserving content is safer for Gemini.
-            cleaned_lines.append(line)
+            if line.startswith(STRUCTURED_EVENT_PREFIX):
+                structured_lines.append(line)
+            else:
+                cleaned_lines.append(line)
             
         # Return at most 50k characters to prevent gigantic context
-        return "\n".join(cleaned_lines)[:50000]
+        structured_text = "\n".join(structured_lines)
+        regular_budget = max(0, 50000 - len(structured_text) - 1)
+        regular_text = "\n".join(cleaned_lines)[:regular_budget]
+        return "\n".join(part for part in (regular_text, structured_text) if part)

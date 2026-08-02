@@ -68,6 +68,8 @@ class ScanSourceResult(Base):
     content_changed: Mapped[bool] = mapped_column(Boolean, default=True)
     events_extracted: Mapped[int] = mapped_column(Integer, default=0)
     fetch_duration_seconds: Mapped[float] = mapped_column(Float, default=0.0)
+    extraction_mode: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    structured_provider: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     llm_model: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     llm_input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     llm_output_tokens: Mapped[int] = mapped_column(Integer, default=0)

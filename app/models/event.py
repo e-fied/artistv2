@@ -49,6 +49,8 @@ class Event(Base):
     ticketmaster_event_id: Mapped[Optional[str]] = mapped_column(
         String(100), nullable=True
     )
+    source_provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    source_event_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     # Status and confidence
     status: Mapped[str] = mapped_column(
