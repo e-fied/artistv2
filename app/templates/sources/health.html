@@ -13,11 +13,15 @@
   <div class="flex gap-md mb-lg">
     <div class="stat-card" style="flex: 1;">
       <div class="stat-label">Total Sources</div>
-      <div class="stat-value">{{ healthy_sources|length + empty_sources|length + failing_sources|length }}</div>
+      <div class="stat-value">{{ healthy_sources|length + empty_sources|length + unknown_sources|length + failing_sources|length }}</div>
     </div>
     <div class="stat-card" style="flex: 1;">
       <div class="stat-label">Healthy, No Dates</div>
       <div class="stat-value">{{ empty_sources|length }}</div>
+    </div>
+    <div class="stat-card" style="flex: 1;">
+      <div class="stat-label">Not Checked</div>
+      <div class="stat-value">{{ unknown_sources|length }}</div>
     </div>
     <div class="stat-card" style="flex: 1;">
       <div class="stat-label">Needs Attention</div>
@@ -110,6 +114,26 @@
         {% if source.last_health_code %}<span class="badge badge-neutral">{{ source.last_health_code|replace('_', ' ') }}</span>{% endif %}
         {% if latest and latest.extraction_mode %}<span class="badge badge-neutral">{{ latest.extraction_mode }}</span>{% endif %}
       </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if unknown_sources %}
+  <h3 class="font-semibold mb-md text-tertiary">Not Checked Yet</h3>
+  <div class="card-grid mb-xl">
+    {% for source in unknown_sources %}
+    <div class="card">
+      <div class="flex items-center justify-between mb-sm">
+        <div class="font-semibold text-sm">{{ source.artist.name }}</div>
+        <span class="badge badge-neutral">Unknown</span>
+      </div>
+      <div class="text-xs text-muted font-mono mb-sm break-all">
+        {{ 'Ticketmaster API' if source.source_type == 'ticketmaster' else source.url }}
+      </div>
+      <form method="post" action="/artists/{{ source.artist_id }}/scan" style="display:inline;">
+        <button type="submit" class="btn btn-secondary btn-sm">Check Now</button>
+      </form>
     </div>
     {% endfor %}
   </div>

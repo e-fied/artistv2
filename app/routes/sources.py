@@ -31,7 +31,14 @@ def source_health_page(request: Request, db: Session = Depends(get_db)):
         source for source in sources
         if source.health_status == "empty" and source not in failing
     ]
-    healthy = [source for source in sources if source not in failing and source not in empty]
+    unknown = [
+        source for source in sources
+        if source.health_status == "unknown" and source not in failing and source not in empty
+    ]
+    healthy = [
+        source for source in sources
+        if source not in failing and source not in empty and source not in unknown
+    ]
     latest_debug_scan_by_source = {}
     latest_result_by_source = {}
     for source in sources:
@@ -51,6 +58,7 @@ def source_health_page(request: Request, db: Session = Depends(get_db)):
             "failing_sources": failing,
             "healthy_sources": healthy,
             "empty_sources": empty,
+            "unknown_sources": unknown,
             "latest_debug_scan_by_source": latest_debug_scan_by_source,
             "latest_result_by_source": latest_result_by_source,
         },
