@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.config import load_settings, save_settings, AppSettings
 from app.database import get_db
+from app.services.cost_reporting import prune_scan_history
+from app.services.debug_capture import prune_debug_artifacts
 
 router = APIRouter(prefix="/settings")
 
@@ -52,6 +54,7 @@ def update_settings(
     request: Request,
     public_app_url: str = Form("https://artist.fied.ca"),
     scan_interval_hours: int = Form(6),
+    scan_history_retention_days: int = Form(90),
     timezone: str = Form("America/Vancouver"),
     gemini_extractor_models: str = Form("gemini-2.5-flash-lite\ngemini-3.1-flash-lite\ngemini-3.5-flash-lite\ngemini-2.5-flash"),
     gemini_extractor_temperature: float = Form(0.1),
@@ -71,6 +74,7 @@ def update_settings(
 
     settings.public_app_url = public_app_url.strip()
     settings.scan_interval_hours = scan_interval_hours
+    settings.scan_history_retention_days = scan_history_retention_days
     settings.timezone = timezone
     settings.gemini_extractor_models = _parse_model_list(
         gemini_extractor_models,
@@ -92,6 +96,8 @@ def update_settings(
     settings.debug_scan_retention = debug_scan_retention
 
     save_settings(settings)
+    prune_scan_history(db, settings.scan_history_retention_days)
+    prune_debug_artifacts(settings.debug_scan_retention)
     return RedirectResponse(url="/settings/?success=saved", status_code=303)
 
 

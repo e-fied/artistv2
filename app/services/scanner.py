@@ -26,6 +26,7 @@ from app.services.event_lifecycle import (
     process_discovered_event,
     record_notification_result,
 )
+from app.services.cost_reporting import prune_scan_history
 from app.services.location_matcher import get_profiles_for_artist
 from app.services.notifier import (
     format_event_notification,
@@ -102,6 +103,7 @@ def scan_all_artists() -> None:
         else:
             scan_run.error_summary = None
         db.commit()
+        prune_scan_history(db, settings.scan_history_retention_days)
 
         logger.info(
             f"Scan complete: {total_found} events, {total_confirmed} confirmed, {total_possible} possible"
@@ -152,6 +154,7 @@ def scan_single_artist_manual(artist_id: int) -> dict:
 
         scan_run.completed_at = datetime.utcnow()
         db.commit()
+        prune_scan_history(db, settings.scan_history_retention_days)
 
         return {
             "artist": artist.name,

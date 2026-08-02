@@ -62,6 +62,12 @@ class AppSettings(BaseModel):
 
     # --- Scheduling ---
     scan_interval_hours: int = Field(default=6, description="Hours between scans")
+    scan_history_retention_days: int = Field(
+        default=90,
+        ge=7,
+        le=730,
+        description="Days of completed scan history and cost detail to retain",
+    )
     timezone: str = Field(default="America/Vancouver")
 
     # --- Gemini ---

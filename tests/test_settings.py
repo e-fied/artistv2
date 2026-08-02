@@ -31,6 +31,7 @@ def test_save_settings_persists_gemini_controls(tmp_path, monkeypatch):
         gemini_autofind_temperature=0.1,
         debug_scan_capture=True,
         debug_scan_retention=12,
+        scan_history_retention_days=120,
     )
 
     save_settings(settings)
@@ -41,6 +42,7 @@ def test_save_settings_persists_gemini_controls(tmp_path, monkeypatch):
     assert raw["gemini_extractor_temperature"] == 0.2
     assert raw["gemini_autofind_models"] == ["gemini-c"]
     assert raw["gemini_autofind_temperature"] == 0.1
+    assert raw["scan_history_retention_days"] == 120
     assert "gemini_api_key" not in raw
 
 

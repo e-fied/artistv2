@@ -22,6 +22,7 @@ from app.models.scan import ScanRun
 from app.seed import seed_locations
 from app.services.location_policy import normalize_location_policy
 from app.services.event_lifecycle import normalize_event_history
+from app.services.cost_reporting import prune_scan_history
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -69,6 +70,10 @@ async def lifespan(app: FastAPI):
                 event_normalization.expired,
                 event_normalization.duplicates_removed,
             )
+        settings = load_settings()
+        pruned_scans = prune_scan_history(db, settings.scan_history_retention_days)
+        if pruned_scans:
+            logger.info("Pruned %s expired scan runs", pruned_scans)
     finally:
         db.close()
 
@@ -173,6 +178,7 @@ from app.routes.events import router as events_router  # noqa: E402
 from app.routes.scans import router as scans_router  # noqa: E402
 from app.routes.sources import router as sources_router  # noqa: E402
 from app.routes.logs import router as logs_router  # noqa: E402
+from app.routes.costs import router as costs_router  # noqa: E402
 
 app.include_router(health_router)
 app.include_router(dashboard_router)
@@ -183,3 +189,4 @@ app.include_router(events_router)
 app.include_router(scans_router)
 app.include_router(sources_router)
 app.include_router(logs_router)
+app.include_router(costs_router)

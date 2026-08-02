@@ -819,6 +819,48 @@ tbody tr:hover {
 }
 
 
+/* ── Cost & Resources ──────────────────────────────────────────────── */
+
+.cost-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+
+.model-price-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.model-price-list > span {
+  padding: var(--space-sm);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+}
+
+.resource-list {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.resource-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  padding-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.resource-list dt {
+  color: var(--text-muted);
+}
+
+.resource-list dd {
+  text-align: right;
+}
+
+
 /* ── Badges / Pills ─────────────────────────────────────────────────── */
 
 .badge {
@@ -1212,6 +1254,14 @@ tbody tr:hover {
   }
 
   .scan-source-row {
+    grid-template-columns: 1fr;
+  }
+
+  .cost-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .model-price-list {
     grid-template-columns: 1fr;
   }
 }

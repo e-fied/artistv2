@@ -52,13 +52,11 @@
       <div class="stat-value" style="color: {% if failing_sources > 0 %}var(--status-error){% else %}var(--text-muted){% endif %};">{{ failing_sources }}</div>
       <div class="stat-detail">Open Source Health →</div>
     </a>
-    <div class="stat-card">
-      <div class="stat-label">All-time Gemini Estimate</div>
-      <div class="stat-value">${{ '%.4f'|format(gemini_cost_total or 0) }}</div>
-      <div class="stat-detail">
-        {{ "{:,}".format((gemini_input_tokens_total or 0)|int) }} in · {{ "{:,}".format((gemini_output_tokens_total or 0)|int) }} out
-      </div>
-    </div>
+    <a href="/costs/" class="stat-card stat-card-link">
+      <div class="stat-label">30-day Gemini Estimate</div>
+      <div class="stat-value">${{ '%.4f'|format(cost_report.window.estimated_cost_usd) }}</div>
+      <div class="stat-detail">{{ cost_report.window.llm_calls }} calls · {{ cost_report.window.deterministic_bypasses }} avoided →</div>
+    </a>
     <div class="stat-card">
       <div class="stat-label">Scan Interval</div>
       <div class="stat-value">{{ scan_interval_hours }}h</div>

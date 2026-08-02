@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Cost & Resources — Tour Tracker{% endblock %}
+
+{% block content %}
+<div class="animate-in">
+  <div class="page-header">
+    <div>
+      <h2>Cost & Resources</h2>
+      <p class="subtitle">Recorded Gemini usage, deterministic bypasses, and bounded history</p>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">30-day Gemini estimate</div>
+      <div class="stat-value">${{ '%.4f'|format(report.window.estimated_cost_usd) }}</div>
+      <div class="stat-detail">{{ report.window.llm_calls }} model call{{ 's' if report.window.llm_calls != 1 else '' }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Gemini calls avoided</div>
+      <div class="stat-value" style="color: var(--status-success);">{{ report.window.deterministic_bypasses }}</div>
+      <div class="stat-detail">{{ report.window.structured_bypasses }} adapters · {{ report.window.cache_bypasses }} unchanged</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">30-day tokens</div>
+      <div class="stat-value">{{ "{:,}".format(report.window.input_tokens + report.window.output_tokens) }}</div>
+      <div class="stat-detail">{{ "{:,}".format(report.window.input_tokens) }} input · {{ "{:,}".format(report.window.output_tokens) }} output</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">All-time estimate</div>
+      <div class="stat-value">${{ '%.4f'|format(report.all_time.estimated_cost_usd) }}</div>
+      <div class="stat-detail">Within retained scan history</div>
+    </div>
+  </div>
+
+  <div class="cost-grid">
+    <section class="card">
+      <div class="card-header"><h3 class="card-title">Model choice</h3></div>
+      <p class="text-sm mb-md">
+        Active extractor: <span class="badge badge-success">{{ primary_extractor_model }}</span>
+      </p>
+      <p class="text-sm text-muted mb-md">
+        Keep Gemini 2.5 Flash-Lite first for this workload. Its paid standard text pricing is
+        $0.10 input / $0.40 output per million tokens. The newer 3.1 and 3.5 Flash-Lite models
+        cost more, so they remain quality fallbacks instead of the default.
+      </p>
+      <div class="model-price-list text-xs">
+        <span><strong>2.5 Flash-Lite</strong><br>$0.10 in · $0.40 out</span>
+        <span><strong>3.1 Flash-Lite</strong><br>$0.25 in · $1.50 out</span>
+        <span><strong>3.5 Flash-Lite</strong><br>$0.30 in · $2.50 out</span>
+      </div>
+      <p class="text-xs text-muted mt-md">
+        Pricing verified Aug 2, 2026 from
+        <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener noreferrer">Google's official Gemini pricing ↗</a>.
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><h3 class="card-title">Resource policy</h3></div>
+      <dl class="resource-list text-sm">
+        <div><dt>Scan interval</dt><dd>{{ settings.scan_interval_hours }} hours</dd></div>
+        <div><dt>Scan history</dt><dd>{{ settings.scan_history_retention_days }} days</dd></div>
+        <div><dt>Debug capture</dt><dd>{{ 'On' if settings.debug_scan_capture else 'Off' }}</dd></div>
+        <div><dt>Debug files kept</dt><dd>{{ settings.debug_scan_retention }}</dd></div>
+        <div><dt>Structured adapters</dt><dd>JSON-LD, Seated, Punchup, Upnex, Bandsintown</dd></div>
+      </dl>
+      <p class="text-xs text-muted mt-md">Costs are estimates from API token metadata and standard paid-tier rates; your Google invoice remains authoritative.</p>
+    </section>
+  </div>
+
+  <section class="card mt-lg">
+    <div class="card-header"><h3 class="card-title">30-day model breakdown</h3></div>
+    {% if report.models %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Model</th><th>Calls</th><th>Input</th><th>Output</th><th>Estimate</th></tr></thead>
+        <tbody>
+        {% for model in report.models %}
+          <tr>
+            <td class="font-mono text-xs">{{ model.model }}</td>
+            <td>{{ model.calls }}</td>
+            <td>{{ "{:,}".format(model.input_tokens) }}</td>
+            <td>{{ "{:,}".format(model.output_tokens) }}</td>
+            <td>${{ '%.5f'|format(model.estimated_cost_usd) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="text-sm text-muted">No Gemini calls were recorded in the last 30 days.</p>{% endif %}
+  </section>
+
+  {% if report.daily %}
+  <details class="card mt-lg">
+    <summary class="card-title">Daily usage</summary>
+    <div class="table-wrap mt-md">
+      <table>
+        <thead><tr><th>Date (UTC)</th><th>Calls</th><th>Estimate</th></tr></thead>
+        <tbody>{% for day in report.daily %}<tr><td>{{ day.day }}</td><td>{{ day.calls }}</td><td>${{ '%.5f'|format(day.estimated_cost_usd) }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
+</div>
+{% endblock %}
