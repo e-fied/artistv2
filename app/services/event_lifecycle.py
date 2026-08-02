@@ -9,7 +9,6 @@ from datetime import date, datetime, time
 from typing import Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.artist import Artist
@@ -350,7 +349,7 @@ def _find_existing_event(
         same_place = [
             candidate
             for candidate in candidate_rows
-            if _normalize_text(candidate.venue) == _normalize_text(venue)
+            if _normalize_venue(candidate.venue) == _normalize_venue(venue)
             and _normalize_text(candidate.city) == _normalize_text(city)
         ]
         exact_time = [candidate for candidate in same_place if candidate.event_time == event_time]
@@ -403,11 +402,15 @@ def _same_performance_rows(db: Session, event: Event) -> list[Event]:
         .filter(
             Event.artist_id == event.artist_id,
             Event.event_date == event.event_date,
-            func.lower(func.trim(Event.venue)) == event.venue.strip().lower(),
-            func.lower(func.trim(Event.city)) == event.city.strip().lower(),
         )
         .all()
     )
+    rows = [
+        row
+        for row in rows
+        if _normalize_venue(row.venue) == _normalize_venue(event.venue)
+        and _normalize_text(row.city) == _normalize_text(event.city)
+    ]
     if event.event_time:
         compatible = [
             row for row in rows if row.event_time in {None, event.event_time}
@@ -487,7 +490,7 @@ def _make_performance_key(
     parts = [
         str(artist_id),
         event_date.isoformat() if event_date else "nodate",
-        _normalize_text(venue),
+        _normalize_venue(venue),
         _normalize_text(city),
         event_time.isoformat() if event_time else "notime",
     ]
@@ -498,6 +501,16 @@ def _make_performance_key(
 
 def _normalize_text(value: Optional[str]) -> str:
     return re.sub(r"\s+", " ", (value or "").strip().casefold())
+
+
+def _normalize_venue(value: Optional[str]) -> str:
+    """Normalize harmless cross-source venue label variants."""
+    normalized = _normalize_text(value)
+    return re.sub(
+        r"\s+(?:theatre|theater|arena|auditorium|amphitheatre|amphitheater)$",
+        "",
+        normalized,
+    )
 
 
 def _normalize_url(value: Optional[str]) -> str:

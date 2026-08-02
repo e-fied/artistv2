@@ -129,6 +129,31 @@ def test_two_showtimes_at_same_venue_remain_separate_performances():
     assert db.query(Event).count() == 2
 
 
+def test_generic_venue_suffix_variants_merge_across_sources():
+    db, artist, profile = _context()
+    first = process_discovered_event(
+        db,
+        artist,
+        _discovery(venue="Orpheum Theatre"),
+        [profile],
+        "ticketmaster",
+        as_of=date(2026, 8, 2),
+    )
+    second = process_discovered_event(
+        db,
+        artist,
+        _discovery(venue="Orpheum", event_name="Adam Ray"),
+        [profile],
+        "official_website",
+        as_of=date(2026, 8, 2),
+    )
+
+    assert first.is_new is True
+    assert second.is_new is False
+    assert second.event.id == first.event.id
+    assert db.query(Event).count() == 1
+
+
 def test_going_suppresses_only_that_performance_and_survives_rediscovery():
     db, artist, profile = _context()
     first = process_discovered_event(
