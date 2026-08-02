@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from logging.handlers import RotatingFileHandler
 from contextlib import asynccontextmanager
 from datetime import timezone
 from pathlib import Path
@@ -23,6 +24,7 @@ from app.seed import seed_locations
 from app.services.location_policy import normalize_location_policy
 from app.services.event_lifecycle import normalize_event_history
 from app.services.cost_reporting import prune_scan_history
+from app.services.log_redaction import SensitiveDataFilter
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -34,11 +36,17 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
     handlers=[
-        logging.FileHandler(LOG_DIR / "app.log"),
+        RotatingFileHandler(
+            LOG_DIR / "app.log",
+            maxBytes=5_000_000,
+            backupCount=3,
+        ),
         logging.StreamHandler(),
     ],
     force=True,
 )
+for handler in logging.getLogger().handlers:
+    handler.addFilter(SensitiveDataFilter())
 logger = logging.getLogger("tourtracker")
 
 
