@@ -6,12 +6,12 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models.artist import Artist
 from app.models.event import Event, EventReview
+from app.services.event_lifecycle import apply_event_action
 
 router = APIRouter()
 
@@ -65,21 +65,7 @@ def toggle_event_attending(
     """Mark one event as attending without pausing future artist scans."""
     event = db.query(Event).filter(Event.id == event_id).first()
     if event:
-        same_performance = (
-            db.query(Event)
-            .filter(
-                Event.artist_id == event.artist_id,
-                Event.event_date == event.event_date,
-                func.lower(func.trim(Event.venue)) == event.venue.strip().lower(),
-                func.lower(func.trim(Event.city)) == event.city.strip().lower(),
-            )
-            .all()
-        )
-        for matching_event in same_performance:
-            matching_event.is_attending = attending
-            if attending:
-                matching_event.notified = True
-        db.commit()
+        apply_event_action(db, event_id, "going" if attending else "not_going")
     return RedirectResponse(url="/events", status_code=303)
 
 
@@ -143,16 +129,12 @@ def review_action(
     db.add(review)
 
     # Apply action
-    if action == "confirm":
-        event.status = "confirmed"
-    elif action == "confirm_silent":
-        event.status = "confirmed"
-        event.notified = True  # mark as already notified to prevent sending
-    elif action == "reject":
-        event.status = "rejected"
+    if action in {"confirm", "confirm_silent", "reject"}:
+        apply_event_action(db, event_id, action)
     elif action == "mark_source_bad":
-        event.status = "rejected"
+        apply_event_action(db, event_id, "reject")
         # TODO: Increment source failure count
 
-    db.commit()
+    if action not in {"confirm", "confirm_silent", "reject", "mark_source_bad"}:
+        db.commit()
     return RedirectResponse(url="/review", status_code=303)

@@ -93,7 +93,7 @@ artistv2/
 │   │   ├── debug_capture.py    # Opt-in JSON scan debug artifacts under data/debug/
 │   │   ├── extractor.py        # ExtractorService: Gemini structured extraction from markdown
 │   │   ├── autofind.py         # Auto-discover official tour page via Gemini + Google Search grounding
-│   │   ├── dedup.py            # make_dedup_key(), upsert_event() — SHA-256 based deduplication
+│   │   ├── event_lifecycle.py  # performance identity, dedup, user and notification state
 │   │   ├── location_matcher.py # Haversine geo-matching, city/alias matching, confidence scoring
 │   │   ├── ticketmaster.py     # TicketmasterClient: attraction + keyword search, event parsing
 │   │   └── notifier.py         # Telegram send + message formatting (confirmed events, review summary)
@@ -159,13 +159,11 @@ APScheduler (every N hours)
        │    │    ├─ CrawlerService.clean_markdown() → strip boilerplate, cap at 50k chars
        │    │    └─ ExtractorService.extract_events() → Gemini 2.5 Flash structured JSON output
        │    │
-       │    └─▶ _process_event() for each discovered event:
-       │         ├─ location_matcher.match_event_to_locations()
-       │         │   └─ Priority: exact_city (1.0) → alias (0.95) → haversine radius (0.7–1.0)
-       │         ├─ dedup.upsert_event()
-       │         │   └─ SHA-256 key: artist_id|name|venue|city|date
-       │         │   └─ Never downgrades status (confirmed stays confirmed)
-       │         └─ notifier.send_telegram() if new + confirmed
+       │    └─▶ event_lifecycle.process_discovered_event() for each discovery:
+       │         ├─ location matching against global Home Area + artist Travel Cities
+       │         ├─ performance identity independent of harmless title changes
+       │         ├─ preserve Going, rejected, and notification state across rediscovery
+       │         └─ notifier.send_telegram() while a confirmed notification is pending
        │
        └─▶ Record ScanRun + ScanSourceResult history
             ├─▶ Optional debug_capture JSON artifact if Settings → Scan Debugging is enabled

@@ -3,8 +3,8 @@
 1. For each active artist:
    a. Query Ticketmaster (if attraction_id or keyword)
    b. Match events against location profiles
-   c. Deduplicate and persist
-   d. Notify on new confirmed events
+   c. Resolve performance identity and persist lifecycle state
+   d. Notify confirmed events whose notification is pending
 2. Record ScanRun + ScanSourceResult history
 """
 
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import time as time_module
-from datetime import datetime, date, time
+from datetime import datetime
 from typing import Optional, List
 
 from sqlalchemy.orm import Session
@@ -22,12 +22,11 @@ from app.database import SessionLocal
 from app.models.artist import Artist, ArtistSource
 from app.models.event import Event
 from app.models.scan import ScanRun, ScanSourceResult
-from app.services.dedup import upsert_event
-from app.services.location_matcher import (
-    MatchResult,
-    get_profiles_for_artist,
-    match_event_to_locations,
+from app.services.event_lifecycle import (
+    process_discovered_event,
+    record_notification_result,
 )
+from app.services.location_matcher import get_profiles_for_artist
 from app.services.notifier import (
     format_event_notification,
     format_review_summary,
@@ -590,94 +589,23 @@ def _process_event(
     profiles: list,
     source_type: str,
 ) -> str:
-    """Process a single discovered event: match, dedup, persist.
-    
-    Returns: 'confirmed', 'possible', 'existing', 'past', or 'no_match'.
-    """
-    # Parse the date before location matching or persistence. Tour pages commonly
-    # retain old dates, and LLM instructions alone are not a safe notification gate.
-    event_date_parsed = None
-    event_time_parsed = None
-    if event_data.get("date") and event_data["date"] != "TBD":
-        try:
-            event_date_parsed = date.fromisoformat(event_data["date"])
-        except ValueError:
-            pass
-    if event_data.get("time"):
-        try:
-            event_time_parsed = time.fromisoformat(event_data["time"])
-        except ValueError:
-            pass
-
-    if event_date_parsed and event_date_parsed < date.today():
-        return "past"
-
-    city = event_data.get("city", "")
-    region = event_data.get("region", "")
-    country = event_data.get("country", "")
-    venue_lat = event_data.get("venue_lat")
-    venue_lon = event_data.get("venue_lon")
-
-    # Match against location profiles
-    match = match_event_to_locations(
-        event_city=city,
-        event_region=region,
-        event_country=country,
-        event_lat=venue_lat,
-        event_lon=venue_lon,
-        event_venue=event_data.get("venue", ""),
-        profiles=profiles,
-    )
-
-    if not match or not match.matched:
-        # Event is outside all tracked locations — skip
-        return "no_match"
-
-    # Determine status based on source and confidence
-    if source_type == "ticketmaster" and match.confidence >= 0.8:
-        status = "confirmed"
-        confidence = match.confidence
-    elif match.confidence >= 0.9:
-        status = "confirmed"
-        confidence = match.confidence
-    else:
-        status = "possible"
-        confidence = match.confidence
-
-    # Upsert
-    event, is_new = upsert_event(
+    """Process one discovery through the event-lifecycle Interface."""
+    result = process_discovered_event(
         db=db,
-        artist_id=artist.id,
-        event_name=event_data.get("event_name", ""),
-        venue=event_data.get("venue", ""),
-        city=city,
-        region=region,
-        country=country,
-        event_date=event_date_parsed,
-        event_time=event_time_parsed,
-        ticket_url=event_data.get("ticket_url"),
-        source_url=event_data.get("source_url"),
+        artist=artist,
+        event_data=event_data,
+        profiles=profiles,
         source_type=source_type,
-        ticketmaster_event_id=event_data.get("ticketmaster_event_id"),
-        status=status,
-        confidence_score=confidence,
-        match_reason=match.reason,
-        evidence_text=event_data.get("evidence_text"),
-        matched_location_profile_id=match.profile.id if match.profile else None,
     )
 
-    if is_new and status == "confirmed":
-        _notify_confirmed(event, artist)
-        return "confirmed"
-    elif is_new and status == "possible":
-        return "possible"
-    else:
-        return "existing"
+    if result.should_notify and result.event:
+        _notify_confirmed(db, result.event, artist)
+    return result.outcome
 
 
-def _notify_confirmed(event: Event, artist: Artist) -> None:
+def _notify_confirmed(db: Session, event: Event, artist: Artist) -> None:
     """Send a Telegram notification for a confirmed event."""
-    if event.notified or event.is_attending:
+    if event.notification_status != "pending" or event.is_attending:
         return
     settings = load_settings()
     if not settings.notify_confirmed:
@@ -697,16 +625,10 @@ def _notify_confirmed(event: Event, artist: Artist) -> None:
         source_type=event.source_type,
     )
 
-    if send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, message):
-        # Mark as notified in the database
-        db = SessionLocal()
-        try:
-            evt = db.query(Event).filter(Event.id == event.id).first()
-            if evt:
-                evt.notified = True
-                db.commit()
-        finally:
-            db.close()
+    sent = send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, message)
+    record_notification_result(event, sent=sent)
+    if sent:
+        db.flush()
 
 
 def _notify_source_health(

@@ -73,6 +73,9 @@ class Event(Base):
     # Notification tracking
     notified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_attending: Mapped[bool] = mapped_column(Boolean, default=False)
+    notification_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="pending"
+    )  # pending | sent | attending | dismissed
 
     # Timestamps
     first_seen_at: Mapped[datetime] = mapped_column(

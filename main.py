@@ -21,6 +21,7 @@ from app.models.event import Event
 from app.models.scan import ScanRun
 from app.seed import seed_locations
 from app.services.location_policy import normalize_location_policy
+from app.services.event_lifecycle import normalize_event_history
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -61,6 +62,13 @@ async def lifespan(app: FastAPI):
     try:
         seed_locations(db)
         normalize_location_policy(db)
+        event_normalization = normalize_event_history(db)
+        if event_normalization.expired or event_normalization.duplicates_removed:
+            logger.info(
+                "Event history normalized: %s expired, %s duplicate rows removed",
+                event_normalization.expired,
+                event_normalization.duplicates_removed,
+            )
     finally:
         db.close()
 

@@ -143,10 +143,10 @@ APScheduler (every N hours)
        │    │    ├─ CrawlerService.clean_markdown() → cap at 50k chars
        │    │    └─ ExtractorService.extract_events() → Gemini structured JSON
        │    │
-       │    └─▶ _process_event() for each discovered event:
-       │         ├─ location_matcher.match_event_to_locations()
-       │         ├─ dedup.upsert_event() — SHA-256 key, never downgrade status
-       │         └─ notifier.send_telegram() — if new + confirmed
+       │    └─▶ event_lifecycle.process_discovered_event() for each discovery:
+       │         ├─ match to global Home Area + per-artist Travel Cities
+       │         ├─ canonicalize performance identity and preserve user state
+       │         └─ notify confirmed events whose notification is still pending
        │
        └─▶ Record ScanRun + ScanSourceResult history
 ```
@@ -293,7 +293,7 @@ artistv2/
 │   │   │                       #   clean_markdown(), hash_content()
 │   │   ├── extractor.py        # ExtractorService: Gemini structured extraction from markdown
 │   │   ├── autofind.py         # auto_find_tour_page() — Gemini + Google Search grounding
-│   │   ├── dedup.py            # make_dedup_key() (SHA-256), upsert_event() (status-aware)
+│   │   ├── event_lifecycle.py  # performance identity, status, dedup, notification state
 │   │   ├── location_matcher.py # haversine_km(), match_event_to_locations(), get_profiles_for_artist()
 │   │   ├── ticketmaster.py     # TicketmasterClient: attraction search, event search, geo-filtering
 │   │   └── notifier.py         # send_telegram(), format_event_notification(), format_review_summary()

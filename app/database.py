@@ -49,6 +49,13 @@ def ensure_sqlite_schema() -> None:
             conn.execute(text("ALTER TABLE artists ADD COLUMN paused_until_date DATE"))
         if "is_attending" not in event_columns:
             conn.execute(text("ALTER TABLE events ADD COLUMN is_attending BOOLEAN DEFAULT 0"))
+        if "notification_status" not in event_columns:
+            conn.execute(text("ALTER TABLE events ADD COLUMN notification_status VARCHAR(30) DEFAULT 'pending'"))
+            # Existing rows are already known to the user; do not blast them after migration.
+            conn.execute(text(
+                "UPDATE events SET notification_status = "
+                "CASE WHEN is_attending = 1 THEN 'attending' ELSE 'sent' END"
+            ))
         if "llm_model" not in scan_source_result_columns:
             conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN llm_model VARCHAR(80)"))
         if "llm_input_tokens" not in scan_source_result_columns:
