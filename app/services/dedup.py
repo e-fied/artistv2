@@ -10,6 +10,7 @@ import logging
 from datetime import date, time, datetime
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.event import Event
@@ -70,6 +71,35 @@ def upsert_event(
     dedup_key = make_dedup_key(artist_id, event_name, venue, city, event_date)
 
     existing = db.query(Event).filter(Event.dedup_key == dedup_key).first()
+
+    # Extractors can vary the event title between scans (quote style, artist
+    # prefix, or tour-name wording). Reuse the same dated performance rather
+    # than treating those harmless title changes as new Telegram-worthy rows.
+    if not existing and event_date:
+        if ticket_url:
+            existing = (
+                db.query(Event)
+                .filter(
+                    Event.artist_id == artist_id,
+                    Event.event_date == event_date,
+                    Event.ticket_url == ticket_url,
+                )
+                .order_by(Event.first_seen_at.asc())
+                .first()
+            )
+
+        if not existing:
+            existing = (
+                db.query(Event)
+                .filter(
+                    Event.artist_id == artist_id,
+                    Event.event_date == event_date,
+                    func.lower(func.trim(Event.venue)) == venue.strip().lower(),
+                    func.lower(func.trim(Event.city)) == city.strip().lower(),
+                )
+                .order_by(Event.first_seen_at.asc())
+                .first()
+            )
 
     if existing:
         # Update mutable fields

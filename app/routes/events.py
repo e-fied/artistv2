@@ -6,6 +6,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -64,9 +65,20 @@ def toggle_event_attending(
     """Mark one event as attending without pausing future artist scans."""
     event = db.query(Event).filter(Event.id == event_id).first()
     if event:
-        event.is_attending = attending
-        if attending:
-            event.notified = True
+        same_performance = (
+            db.query(Event)
+            .filter(
+                Event.artist_id == event.artist_id,
+                Event.event_date == event.event_date,
+                func.lower(func.trim(Event.venue)) == event.venue.strip().lower(),
+                func.lower(func.trim(Event.city)) == event.city.strip().lower(),
+            )
+            .all()
+        )
+        for matching_event in same_performance:
+            matching_event.is_attending = attending
+            if attending:
+                matching_event.notified = True
         db.commit()
     return RedirectResponse(url="/events", status_code=303)
 
