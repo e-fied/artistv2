@@ -59,15 +59,17 @@ Return the exact URL and evaluate your confidence (high if it's clearly their ma
         last_error = None
         for model in model_candidates:
             try:
+                config_kwargs = {
+                    "response_mime_type": "application/json",
+                    "response_schema": AutoFindResult,
+                    "tools": [{"google_search": {}}],
+                }
+                if not model.startswith(("gemini-3.5-", "gemini-3.6-")):
+                    config_kwargs["temperature"] = temperature
                 response = client.models.generate_content(
                     model=model,
                     contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=AutoFindResult,
-                        temperature=temperature,
-                        tools=[{"google_search": {}}],  # Enable Google Search Grounding
-                    ),
+                    config=types.GenerateContentConfig(**config_kwargs),
                 )
                 break
             except Exception as e:

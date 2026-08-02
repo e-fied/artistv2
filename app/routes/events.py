@@ -55,6 +55,22 @@ def delete_event(event_id: int, db: Session = Depends(get_db)):
     return RedirectResponse(url="/events", status_code=303)
 
 
+@router.post("/events/{event_id}/attending")
+def toggle_event_attending(
+    event_id: int,
+    attending: bool = Form(False),
+    db: Session = Depends(get_db),
+):
+    """Mark one event as attending without pausing future artist scans."""
+    event = db.query(Event).filter(Event.id == event_id).first()
+    if event:
+        event.is_attending = attending
+        if attending:
+            event.notified = True
+        db.commit()
+    return RedirectResponse(url="/events", status_code=303)
+
+
 @router.post("/events/delete-filtered")
 def delete_filtered_events(
     db: Session = Depends(get_db),

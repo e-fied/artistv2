@@ -41,11 +41,14 @@ def _sqlite_columns(table_name: str) -> set[str]:
 def ensure_sqlite_schema() -> None:
     """Apply lightweight SQLite column adds for small forward-only migrations."""
     artist_columns = _sqlite_columns("artists")
+    event_columns = _sqlite_columns("events")
     scan_source_result_columns = _sqlite_columns("scan_source_results")
 
     with engine.begin() as conn:
         if "paused_until_date" not in artist_columns:
             conn.execute(text("ALTER TABLE artists ADD COLUMN paused_until_date DATE"))
+        if "is_attending" not in event_columns:
+            conn.execute(text("ALTER TABLE events ADD COLUMN is_attending BOOLEAN DEFAULT 0"))
         if "llm_model" not in scan_source_result_columns:
             conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN llm_model VARCHAR(80)"))
         if "llm_input_tokens" not in scan_source_result_columns:

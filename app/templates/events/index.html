@@ -105,10 +105,18 @@
             {% endif %}
           </td>
           <td>
-            <form method="post" action="/events/{{ event.id }}/delete"
-                  onsubmit="return confirm('Delete this event so a scan can rediscover it?')">
-              <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-error);">Delete</button>
-            </form>
+            <div class="flex gap-sm items-center" style="flex-wrap: wrap;">
+              <form method="post" action="/events/{{ event.id }}/attending">
+                <input type="hidden" name="attending" value="{{ 'false' if event.is_attending else 'true' }}">
+                <button type="submit" class="btn btn-sm {{ 'btn-secondary' if event.is_attending else 'btn-ghost' }}">
+                  {{ '✓ Going' if event.is_attending else "I'm Going" }}
+                </button>
+              </form>
+              <form method="post" action="/events/{{ event.id }}/delete"
+                    onsubmit="return confirm('Delete this event so a scan can rediscover it?')">
+                <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-error);">Delete</button>
+              </form>
+            </div>
           </td>
         </tr>
         {% endfor %}

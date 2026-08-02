@@ -72,6 +72,7 @@ class Event(Base):
 
     # Notification tracking
     notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_attending: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Timestamps
     first_seen_at: Mapped[datetime] = mapped_column(

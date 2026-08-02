@@ -78,14 +78,16 @@ Website Content:
             last_error = None
             for model in model_candidates:
                 try:
+                    config_kwargs = {
+                        "response_mime_type": "application/json",
+                        "response_schema": ExtractionResult,
+                    }
+                    if not model.startswith(("gemini-3.5-", "gemini-3.6-")):
+                        config_kwargs["temperature"] = temperature
                     response = self.client.models.generate_content(
                         model=model,
                         contents=prompt,
-                        config=types.GenerateContentConfig(
-                            response_mime_type="application/json",
-                            response_schema=ExtractionResult,
-                            temperature=temperature,
-                        ),
+                        config=types.GenerateContentConfig(**config_kwargs),
                     )
                     self.last_debug["model"] = model
                     break

@@ -13,6 +13,11 @@ def test_estimate_cost_usd_uses_flash_prices():
     assert estimate_cost_usd("gemini-2.5-flash", 1_000_000, 1_000_000) == 2.8
 
 
+def test_estimate_cost_usd_tracks_current_flash_lite_prices():
+    assert estimate_cost_usd("gemini-3.1-flash-lite", 1_000_000, 1_000_000) == 1.75
+    assert estimate_cost_usd("gemini-3.5-flash-lite", 1_000_000, 1_000_000) == 2.8
+
+
 def test_usage_from_metadata_prefers_gemini_token_counts():
     usage = usage_from_metadata(
         "gemini-2.5-flash-lite",

@@ -71,7 +71,7 @@ def scan_all_artists() -> None:
             try:
                 _set_scan_progress(db, scan_run.id, f"Scanning {artist.name}")
                 found, confirmed, possible = _scan_single_artist(
-                    db, artist, scan_run.id, settings
+                    db, artist, scan_run.id, settings, use_content_cache=True
                 )
                 total_found += found
                 total_confirmed += confirmed
@@ -206,6 +206,7 @@ def _scan_single_artist(
     artist: Artist,
     scan_run_id: int,
     settings,
+    use_content_cache: bool = False,
 ) -> tuple:  # (found, new_confirmed, new_possible)
     """Scan a single artist across all their sources.
     
@@ -417,9 +418,33 @@ def _scan_single_artist(
                     
                     cleaned_md = crawler.clean_markdown(markdown)
                     current_hash = hash_content(cleaned_md)
-                    
-                    # Optional enhancement: Skip extraction if content hash hasn't changed since last successful scan
-                    # if w_source.last_content_hash == current_hash: ...
+
+                    if _can_skip_unchanged_web_source(
+                        w_source,
+                        current_hash,
+                        use_content_cache=use_content_cache,
+                    ):
+                        source_result.events_extracted = 0
+                        w_source.last_success_at = datetime.utcnow()
+                        w_source.consecutive_failures = 0
+                        w_source.last_error = None
+                        append_source_debug(
+                            scan_run_id,
+                            settings.debug_scan_capture,
+                            {
+                                "artist": artist.name,
+                                "source_type": w_source.source_type,
+                                "url": w_source.url,
+                                "crawler_used": crawler_used,
+                                "markdown_chars": len(markdown),
+                                "cleaned_markdown_chars": len(cleaned_md),
+                                "skipped_reason": "unchanged_healthy_content",
+                            },
+                        )
+                        source_result.fetch_duration_seconds = time_module.time() - start_time
+                        w_source.last_checked_at = datetime.utcnow()
+                        db.add(source_result)
+                        continue
                     
                     _set_scan_progress(
                         db,
@@ -477,7 +502,13 @@ def _scan_single_artist(
                             logger.warning(
                                 f"No events extracted for {w_source.url}: {diagnostic}"
                             )
-                            _notify_source_health(settings, artist, w_source, diagnostic)
+                            _notify_source_health(
+                                settings,
+                                artist,
+                                w_source,
+                                diagnostic,
+                                transient_diagnostic=True,
+                            )
                         else:
                             w_source.last_success_at = datetime.utcnow()
                             w_source.consecutive_failures = 0
@@ -561,8 +592,26 @@ def _process_event(
 ) -> str:
     """Process a single discovered event: match, dedup, persist.
     
-    Returns the status string: 'confirmed', 'possible', 'existing', or 'no_match'.
+    Returns: 'confirmed', 'possible', 'existing', 'past', or 'no_match'.
     """
+    # Parse the date before location matching or persistence. Tour pages commonly
+    # retain old dates, and LLM instructions alone are not a safe notification gate.
+    event_date_parsed = None
+    event_time_parsed = None
+    if event_data.get("date") and event_data["date"] != "TBD":
+        try:
+            event_date_parsed = date.fromisoformat(event_data["date"])
+        except ValueError:
+            pass
+    if event_data.get("time"):
+        try:
+            event_time_parsed = time.fromisoformat(event_data["time"])
+        except ValueError:
+            pass
+
+    if event_date_parsed and event_date_parsed < date.today():
+        return "past"
+
     city = event_data.get("city", "")
     region = event_data.get("region", "")
     country = event_data.get("country", "")
@@ -594,20 +643,6 @@ def _process_event(
     else:
         status = "possible"
         confidence = match.confidence
-
-    # Parse date/time
-    event_date_parsed = None
-    event_time_parsed = None
-    if event_data.get("date") and event_data["date"] != "TBD":
-        try:
-            event_date_parsed = date.fromisoformat(event_data["date"])
-        except ValueError:
-            pass
-    if event_data.get("time"):
-        try:
-            event_time_parsed = time.fromisoformat(event_data["time"])
-        except ValueError:
-            pass
 
     # Upsert
     event, is_new = upsert_event(
@@ -642,6 +677,8 @@ def _process_event(
 
 def _notify_confirmed(event: Event, artist: Artist) -> None:
     """Send a Telegram notification for a confirmed event."""
+    if event.notified or event.is_attending:
+        return
     settings = load_settings()
     if not settings.notify_confirmed:
         return
@@ -672,11 +709,20 @@ def _notify_confirmed(event: Event, artist: Artist) -> None:
             db.close()
 
 
-def _notify_source_health(settings, artist: Artist, source: ArtistSource, problem: str) -> None:
+def _notify_source_health(
+    settings,
+    artist: Artist,
+    source: ArtistSource,
+    problem: str,
+    *,
+    transient_diagnostic: bool = False,
+) -> None:
     """Send a Telegram notification for a source health warning."""
     if not settings.notify_source_health:
         return
     if not settings.telegram_bot_token or not settings.telegram_chat_id:
+        return
+    if transient_diagnostic and source.consecutive_failures not in {3, 10, 25}:
         return
 
     message = format_source_health_alert(
@@ -687,6 +733,23 @@ def _notify_source_health(settings, artist: Artist, source: ArtistSource, proble
         consecutive_failures=source.consecutive_failures,
     )
     send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, message)
+
+
+def _can_skip_unchanged_web_source(
+    source: ArtistSource,
+    current_hash: str,
+    *,
+    use_content_cache: bool,
+) -> bool:
+    """Skip LLM extraction only for unchanged sources known to be healthy."""
+    return bool(
+        use_content_cache
+        and current_hash
+        and source.content_hash == current_hash
+        and source.last_success_at
+        and source.consecutive_failures == 0
+        and not source.last_error
+    )
 
 
 def _apply_llm_usage_to_source_result(source_result: ScanSourceResult, llm_debug: dict) -> None:
