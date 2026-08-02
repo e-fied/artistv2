@@ -297,6 +297,7 @@ artistv2/
 │   │   ├── autofind.py         # auto_find_tour_page() — Gemini + Google Search grounding
 │   │   ├── event_lifecycle.py  # performance identity, status, dedup, notification state
 │   │   ├── structured_sources.py # canonical adapter seam and LLM-free extraction
+│   │   ├── source_health.py     # health classification, streaks, and recovery transitions
 │   │   ├── location_matcher.py # haversine_km(), match_event_to_locations(), get_profiles_for_artist()
 │   │   ├── ticketmaster.py     # TicketmasterClient: attraction search, event search, geo-filtering
 │   │   └── notifier.py         # send_telegram(), format_event_notification(), format_review_summary()

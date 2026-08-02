@@ -131,3 +131,22 @@ def format_source_health_alert(
     )
 
     return "\n".join(lines)
+
+
+def format_source_health_recovery(
+    artist_name: str,
+    source_type: str,
+    source_url: Optional[str],
+    previous_failures: int,
+) -> str:
+    """Format a concise source recovery confirmation."""
+    lines = [
+        "✅ <b>Source Recovered</b>",
+        "",
+        f"🎤 <b>{escape(artist_name)}</b>",
+        f"📡 Source: {escape(source_type)}",
+        f"🔁 Cleared after {previous_failures} failed check{'s' if previous_failures != 1 else ''}",
+    ]
+    if source_url:
+        lines.append(f"🔗 {escape(source_url)}")
+    return "\n".join(lines)

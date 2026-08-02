@@ -23,16 +23,26 @@ def source_health_page(request: Request, db: Session = Depends(get_db)):
         .all()
     )
 
-    failing = [s for s in sources if s.consecutive_failures > 0]
-    healthy = [s for s in sources if s.consecutive_failures == 0]
+    failing = [
+        source for source in sources
+        if source.health_status in {"warning", "error"} or source.consecutive_failures > 0
+    ]
+    empty = [
+        source for source in sources
+        if source.health_status == "empty" and source not in failing
+    ]
+    healthy = [source for source in sources if source not in failing and source not in empty]
     latest_debug_scan_by_source = {}
-    for source in failing:
+    latest_result_by_source = {}
+    for source in sources:
         result = (
             db.query(ScanSourceResult)
             .filter(ScanSourceResult.artist_source_id == source.id)
             .order_by(ScanSourceResult.created_at.desc())
             .first()
         )
+        if result:
+            latest_result_by_source[source.id] = result
         if result and has_scan_debug(result.scan_run_id):
             latest_debug_scan_by_source[source.id] = result.scan_run_id
 
@@ -40,6 +50,8 @@ def source_health_page(request: Request, db: Session = Depends(get_db)):
             "request": request,
             "failing_sources": failing,
             "healthy_sources": healthy,
+            "empty_sources": empty,
             "latest_debug_scan_by_source": latest_debug_scan_by_source,
+            "latest_result_by_source": latest_result_by_source,
         },
     )

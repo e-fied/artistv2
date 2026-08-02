@@ -70,6 +70,8 @@ class ScanSourceResult(Base):
     fetch_duration_seconds: Mapped[float] = mapped_column(Float, default=0.0)
     extraction_mode: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     structured_provider: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    health_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    health_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     llm_model: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     llm_input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     llm_output_tokens: Mapped[int] = mapped_column(Integer, default=0)

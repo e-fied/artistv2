@@ -16,6 +16,7 @@ from firecrawl import FirecrawlApp
 
 from app.config import AppSettings
 from app.services.structured_sources import STRUCTURED_EVENT_PREFIX, event_marker
+from app.services.source_health import assess_event_content
 
 logger = logging.getLogger(__name__)
 
@@ -694,55 +695,9 @@ class CrawlerService:
         return ", ".join(str(part) for part in parts if part)
 
     def diagnose_event_content(self, url: str, markdown: str, extracted_count: int) -> Optional[str]:
-        """Explain likely reasons a successful crawl produced no events."""
-        if extracted_count > 0:
-            return None
-
-        text = (markdown or "").strip()
-        lower_text = text.lower()
-        text_len = len(text)
-
-        bot_patterns = [
-            "access denied",
-            "captcha",
-            "cf-chl",
-            "cloudflare",
-            "enable cookies",
-            "forbidden",
-            "robot",
-            "unusual traffic",
-            "verify you are human",
-        ]
-        if any(pattern in lower_text for pattern in bot_patterns):
-            return "Crawler reached the page, but the content looks like a bot protection or access-denied page."
-
-        no_event_patterns = [
-            "no upcoming events",
-            "no tour dates",
-            "no shows",
-            "nothing scheduled",
-            "check back soon",
-        ]
-        if any(pattern in lower_text for pattern in no_event_patterns):
-            return "Crawler reached the page and it appears to say there are no upcoming dates."
-
-        date_hits = re.findall(
-            r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b",
-            lower_text,
-        )
-        event_words = ("tour", "tickets", "venue", "show", "event", "dates")
-        event_word_hits = sum(1 for word in event_words if word in lower_text)
-
-        if text_len < 500:
-            return "Crawler returned very little page text. The page may be blank, blocked, or rendering tour dates after load."
-
-        if event_word_hits >= 2 and not date_hits:
-            return "Crawler found tour-related text but no date-like content. The listing may be loaded by JavaScript, a ticketing widget, or an unsupported API."
-
-        if not date_hits:
-            return "Crawler fetched readable content, but no date-like text was found for extraction."
-
-        return "Crawler found date-like text, but Gemini extracted zero events. The page may use an unsupported format or the dates may not be for this artist."
+        """Compatibility wrapper for the centralized health classifier."""
+        assessment = assess_event_content(markdown, extracted_count)
+        return assessment.message if assessment.is_problem else None
 
     def _seated_api_to_markdown(self, data: dict) -> Optional[str]:
         """Convert Seated JSON:API tour events into LLM-friendly markdown."""

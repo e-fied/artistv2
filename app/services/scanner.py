@@ -31,10 +31,19 @@ from app.services.notifier import (
     format_event_notification,
     format_review_summary,
     format_source_health_alert,
+    format_source_health_recovery,
     send_telegram,
 )
 from app.services.ticketmaster import TicketmasterClient
 from app.services.structured_sources import extract_structured_events
+from app.services.source_health import (
+    SourceHealthAssessment,
+    apply_source_health,
+    assess_event_content,
+    cached_assessment,
+    fetch_error_assessment,
+    ticketmaster_assessment,
+)
 from app.services.debug_capture import append_source_debug, init_scan_debug
 from app.services.artist_status import resume_artists_ready_for_scan
 from app.services.crawler import CrawlerService, hash_content
@@ -324,9 +333,13 @@ def _scan_single_artist(
 
             source_result.fetch_success = True
             source_result.events_extracted = len(unique_events)
-            tm_source.last_success_at = datetime.utcnow()
-            tm_source.consecutive_failures = 0
-            tm_source.last_error = None
+            _record_source_health(
+                settings,
+                artist,
+                tm_source,
+                source_result,
+                ticketmaster_assessment(len(unique_events)),
+            )
             append_source_debug(
                 scan_run_id,
                 settings.debug_scan_capture,
@@ -361,11 +374,9 @@ def _scan_single_artist(
 
         except Exception as e:
             source_result.fetch_success = False
-            source_result.fetch_error = str(e)[:500]
-            tm_source.consecutive_failures += 1
-            tm_source.last_error = str(e)[:500]
+            assessment = fetch_error_assessment(str(e))
+            _record_source_health(settings, artist, tm_source, source_result, assessment)
             logger.error(f"Ticketmaster scan for {artist.name} failed: {e}")
-            _notify_source_health(settings, artist, tm_source, source_result.fetch_error)
             append_source_debug(
                 scan_run_id,
                 settings.debug_scan_capture,
@@ -378,7 +389,6 @@ def _scan_single_artist(
             )
 
         source_result.fetch_duration_seconds = time_module.time() - start_time
-        tm_source.last_checked_at = datetime.utcnow()
         db.add(source_result)
 
     # ── Web Sources ──
@@ -426,9 +436,13 @@ def _scan_single_artist(
                     ):
                         source_result.events_extracted = 0
                         source_result.extraction_mode = "cache"
-                        w_source.last_success_at = datetime.utcnow()
-                        w_source.consecutive_failures = 0
-                        w_source.last_error = None
+                        _record_source_health(
+                            settings,
+                            artist,
+                            w_source,
+                            source_result,
+                            cached_assessment(),
+                        )
                         append_source_debug(
                             scan_run_id,
                             settings.debug_scan_capture,
@@ -514,36 +528,35 @@ def _scan_single_artist(
                                 new_possible += 1
 
                         w_source.content_hash = current_hash
-                        diagnostic = crawler.diagnose_event_content(
-                            w_source.url, cleaned_md, len(extraction.events)
+                        assessment = assess_event_content(
+                            cleaned_md,
+                            len(extraction.events),
+                            extraction_mode=source_result.extraction_mode,
                         )
-                        if diagnostic:
-                            source_result.fetch_error = diagnostic
-                            w_source.consecutive_failures += 1
-                            w_source.last_error = diagnostic
+                        _record_source_health(
+                            settings, artist, w_source, source_result, assessment
+                        )
+                        if assessment.is_problem:
                             logger.warning(
-                                f"No events extracted for {w_source.url}: {diagnostic}"
+                                "No events extracted for %s: %s",
+                                w_source.url,
+                                assessment.message,
                             )
-                            _notify_source_health(
-                                settings,
-                                artist,
-                                w_source,
-                                diagnostic,
-                                transient_diagnostic=True,
-                            )
-                        else:
-                            w_source.last_success_at = datetime.utcnow()
-                            w_source.consecutive_failures = 0
-                            w_source.last_error = None
                     else:
-                        diagnostic = crawler.diagnose_event_content(
-                            w_source.url, cleaned_md, 0
+                        assessment = assess_event_content(
+                            cleaned_md,
+                            0,
+                            extraction_failed=True,
+                            extraction_mode=source_result.extraction_mode,
                         )
-                        source_result.fetch_error = diagnostic or "Gemini extraction failed"
-                        w_source.last_error = source_result.fetch_error
-                        logger.warning(f"Extracted no events or LLM failed for {w_source.url}: {source_result.fetch_error}")
-                        w_source.consecutive_failures += 1
-                        _notify_source_health(settings, artist, w_source, source_result.fetch_error)
+                        _record_source_health(
+                            settings, artist, w_source, source_result, assessment
+                        )
+                        logger.warning(
+                            "Extracted no events or LLM failed for %s: %s",
+                            w_source.url,
+                            assessment.message,
+                        )
 
                     append_source_debug(
                         scan_run_id,
@@ -559,15 +572,17 @@ def _scan_single_artist(
                             "llm": extractor.last_debug,
                             "events_extracted": source_result.events_extracted,
                             "events": processed_events,
+                            "health_status": source_result.health_status,
+                            "health_code": source_result.health_code,
                             "diagnostic": source_result.fetch_error,
                         },
                     )
                 else:
                     source_result.fetch_success = False
-                    source_result.fetch_error = "Crawler failed to fetch markdown"
-                    w_source.consecutive_failures += 1
-                    w_source.last_error = source_result.fetch_error
-                    _notify_source_health(settings, artist, w_source, source_result.fetch_error)
+                    assessment = fetch_error_assessment("Crawler failed to fetch markdown")
+                    _record_source_health(
+                        settings, artist, w_source, source_result, assessment
+                    )
                     append_source_debug(
                         scan_run_id,
                         settings.debug_scan_capture,
@@ -581,11 +596,9 @@ def _scan_single_artist(
 
             except Exception as e:
                 source_result.fetch_success = False
-                source_result.fetch_error = str(e)[:500]
-                w_source.consecutive_failures += 1
-                w_source.last_error = str(e)[:500]
+                assessment = fetch_error_assessment(str(e))
+                _record_source_health(settings, artist, w_source, source_result, assessment)
                 logger.error(f"Web scan for {w_source.url} failed: {e}")
-                _notify_source_health(settings, artist, w_source, source_result.fetch_error)
                 append_source_debug(
                     scan_run_id,
                     settings.debug_scan_capture,
@@ -598,7 +611,6 @@ def _scan_single_artist(
                 )
 
             source_result.fetch_duration_seconds = time_module.time() - start_time
-            w_source.last_checked_at = datetime.utcnow()
             db.add(source_result)
 
     db.commit()
@@ -667,7 +679,8 @@ def _notify_source_health(
         return
     if not settings.telegram_bot_token or not settings.telegram_chat_id:
         return
-    if transient_diagnostic and source.consecutive_failures not in {3, 10, 25}:
+    alert_points = {3, 10, 25} if transient_diagnostic else {1, 3, 10, 25}
+    if source.consecutive_failures not in alert_points:
         return
 
     message = format_source_health_alert(
@@ -678,6 +691,52 @@ def _notify_source_health(
         consecutive_failures=source.consecutive_failures,
     )
     send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, message)
+
+
+def _notify_source_recovery(
+    settings,
+    artist: Artist,
+    source: ArtistSource,
+    previous_failures: int,
+) -> None:
+    """Close the loop after a source had reached an alert-worthy streak."""
+    if previous_failures < 3 or not settings.notify_source_health:
+        return
+    if not settings.telegram_bot_token or not settings.telegram_chat_id:
+        return
+    message = format_source_health_recovery(
+        artist_name=artist.name,
+        source_type=source.source_type,
+        source_url=source.url,
+        previous_failures=previous_failures,
+    )
+    send_telegram(settings.telegram_bot_token, settings.telegram_chat_id, message)
+
+
+def _record_source_health(
+    settings,
+    artist: Artist,
+    source: ArtistSource,
+    source_result: ScanSourceResult,
+    assessment: SourceHealthAssessment,
+) -> None:
+    """Apply one health outcome and emit only threshold/recovery notifications."""
+    transition = apply_source_health(source, source_result, assessment)
+    if assessment.is_problem:
+        _notify_source_health(
+            settings,
+            artist,
+            source,
+            assessment.message or assessment.code,
+            transient_diagnostic=assessment.transient,
+        )
+    elif transition.recovered:
+        _notify_source_recovery(
+            settings,
+            artist,
+            source,
+            transition.previous_failures,
+        )
 
 
 def _can_skip_unchanged_web_source(

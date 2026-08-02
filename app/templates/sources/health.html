@@ -13,7 +13,11 @@
   <div class="flex gap-md mb-lg">
     <div class="stat-card" style="flex: 1;">
       <div class="stat-label">Total Sources</div>
-      <div class="stat-value">{{ healthy_sources|length + failing_sources|length }}</div>
+      <div class="stat-value">{{ healthy_sources|length + empty_sources|length + failing_sources|length }}</div>
+    </div>
+    <div class="stat-card" style="flex: 1;">
+      <div class="stat-label">Healthy, No Dates</div>
+      <div class="stat-value">{{ empty_sources|length }}</div>
     </div>
     <div class="stat-card" style="flex: 1;">
       <div class="stat-label">Needs Attention</div>
@@ -30,8 +34,8 @@
     <div class="card">
       <div class="flex items-center justify-between mb-sm">
         <div class="font-semibold">{{ source.artist.name }}</div>
-        <span class="badge {% if source.consecutive_failures >= 3 %}badge-error{% else %}badge-warning{% endif %}">
-          {{ source.consecutive_failures }} notice{{ 's' if source.consecutive_failures != 1 else '' }}
+        <span class="badge {% if source.health_status == 'error' %}badge-error{% else %}badge-warning{% endif %}">
+          {{ source.health_status }} · {{ source.consecutive_failures }} check{{ 's' if source.consecutive_failures != 1 else '' }}
         </span>
       </div>
       
@@ -49,6 +53,15 @@
       <div class="text-xs text-muted mb-sm">
         Last checked: {{ source.last_checked_at|localtime('%Y-%m-%d %H:%M') if source.last_checked_at else 'Never' }}
       </div>
+
+      {% set latest = latest_result_by_source.get(source.id) %}
+      {% if latest %}
+      <div class="flex gap-xs mb-sm" style="flex-wrap: wrap;">
+        {% if latest.health_code %}<span class="badge badge-neutral">{{ latest.health_code|replace('_', ' ') }}</span>{% endif %}
+        {% if latest.extraction_mode %}<span class="badge badge-neutral">{{ latest.extraction_mode }}</span>{% endif %}
+        {% if latest.structured_provider %}<span class="badge badge-success">{{ latest.structured_provider }}</span>{% endif %}
+      </div>
+      {% endif %}
 
       {% if source.last_error %}
       <div class="code-block text-xs" style="color: {% if source.consecutive_failures >= 3 %}var(--status-error){% else %}var(--status-warning){% endif %}; white-space: pre-wrap;">
@@ -80,10 +93,33 @@
   </div>
   {% endif %}
 
+  {% if empty_sources %}
+  <h3 class="font-semibold mb-md text-tertiary">Healthy Sources With No Upcoming Dates</h3>
+  <div class="card-grid mb-xl">
+    {% for source in empty_sources %}
+    {% set latest = latest_result_by_source.get(source.id) %}
+    <div class="card">
+      <div class="flex items-center justify-between mb-sm">
+        <div class="font-semibold text-sm">{{ source.artist.name }}</div>
+        <span class="badge badge-neutral">No dates</span>
+      </div>
+      <div class="text-xs text-muted font-mono mb-xs break-all">
+        {{ 'Ticketmaster API' if source.source_type == 'ticketmaster' else source.url }}
+      </div>
+      <div class="flex gap-xs" style="flex-wrap: wrap;">
+        {% if source.last_health_code %}<span class="badge badge-neutral">{{ source.last_health_code|replace('_', ' ') }}</span>{% endif %}
+        {% if latest and latest.extraction_mode %}<span class="badge badge-neutral">{{ latest.extraction_mode }}</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <h3 class="font-semibold mb-md text-tertiary">Healthy Sources</h3>
   {% if healthy_sources %}
   <div class="card-grid">
     {% for source in healthy_sources[:50] %}
+    {% set latest = latest_result_by_source.get(source.id) %}
     <div class="card" style="opacity: 0.8; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
       <div class="flex items-center justify-between mb-sm">
         <div class="font-semibold text-sm">{{ source.artist.name }}</div>
@@ -98,6 +134,11 @@
       </div>
       <div class="text-xs text-tertiary">
         Last success: {{ source.last_success_at|localtime('%Y-%m-%d %H:%M') if source.last_success_at else 'N/A' }}
+      </div>
+      <div class="flex gap-xs mt-sm" style="flex-wrap: wrap;">
+        {% if latest and latest.extraction_mode %}<span class="badge badge-neutral">{{ latest.extraction_mode }}</span>{% endif %}
+        {% if latest and latest.structured_provider %}<span class="badge badge-success">{{ latest.structured_provider }}</span>{% endif %}
+        {% if source.last_recovered_at %}<span class="badge badge-success">recovered {{ source.last_recovered_at|localtime('%b %d') }}</span>{% endif %}
       </div>
     </div>
     {% endfor %}

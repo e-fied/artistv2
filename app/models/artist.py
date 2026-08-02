@@ -89,6 +89,9 @@ class ArtistSource(Base):
         DateTime, nullable=True
     )
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    health_status: Mapped[str] = mapped_column(String(20), default="unknown")
+    last_health_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    last_recovered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     content_hash: Mapped[Optional[str]] = mapped_column(
         String(64), nullable=True
     )  # SHA-256

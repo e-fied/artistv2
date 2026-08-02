@@ -95,6 +95,7 @@ artistv2/
 │   │   ├── autofind.py         # Auto-discover official tour page via Gemini + Google Search grounding
 │   │   ├── event_lifecycle.py  # performance identity, dedup, user and notification state
 │   │   ├── structured_sources.py # canonical structured-event seam; Gemini bypass
+│   │   ├── source_health.py     # healthy/empty/warning/error classification + recovery
 │   │   ├── location_matcher.py # Haversine geo-matching, city/alias matching, confidence scoring
 │   │   ├── ticketmaster.py     # TicketmasterClient: attraction + keyword search, event parsing
 │   │   └── notifier.py         # Telegram send + message formatting (confirmed events, review summary)

@@ -123,6 +123,8 @@ def test_scanner_bypasses_gemini_for_structured_adapter_events(monkeypatch):
     assert (found, confirmed, possible) == (1, 1, 0)
     assert result.extraction_mode == "structured"
     assert result.structured_provider == "seated"
+    assert result.health_status == "healthy"
+    assert result.health_code == "structured_events"
     assert result.llm_input_tokens == 0
     assert result.llm_estimated_cost_usd == 0
     assert persisted_event.source_provider == "seated"

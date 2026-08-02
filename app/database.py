@@ -41,12 +41,24 @@ def _sqlite_columns(table_name: str) -> set[str]:
 def ensure_sqlite_schema() -> None:
     """Apply lightweight SQLite column adds for small forward-only migrations."""
     artist_columns = _sqlite_columns("artists")
+    artist_source_columns = _sqlite_columns("artist_sources")
     event_columns = _sqlite_columns("events")
     scan_source_result_columns = _sqlite_columns("scan_source_results")
 
     with engine.begin() as conn:
         if "paused_until_date" not in artist_columns:
             conn.execute(text("ALTER TABLE artists ADD COLUMN paused_until_date DATE"))
+        if "health_status" not in artist_source_columns:
+            conn.execute(text("ALTER TABLE artist_sources ADD COLUMN health_status VARCHAR(20) DEFAULT 'unknown'"))
+            conn.execute(text(
+                "UPDATE artist_sources SET health_status = CASE "
+                "WHEN consecutive_failures > 0 THEN 'warning' "
+                "WHEN last_success_at IS NOT NULL THEN 'healthy' ELSE 'unknown' END"
+            ))
+        if "last_health_code" not in artist_source_columns:
+            conn.execute(text("ALTER TABLE artist_sources ADD COLUMN last_health_code VARCHAR(50)"))
+        if "last_recovered_at" not in artist_source_columns:
+            conn.execute(text("ALTER TABLE artist_sources ADD COLUMN last_recovered_at DATETIME"))
         if "is_attending" not in event_columns:
             conn.execute(text("ALTER TABLE events ADD COLUMN is_attending BOOLEAN DEFAULT 0"))
         if "notification_status" not in event_columns:
@@ -64,6 +76,10 @@ def ensure_sqlite_schema() -> None:
             conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN extraction_mode VARCHAR(30)"))
         if "structured_provider" not in scan_source_result_columns:
             conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN structured_provider VARCHAR(200)"))
+        if "health_status" not in scan_source_result_columns:
+            conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN health_status VARCHAR(20)"))
+        if "health_code" not in scan_source_result_columns:
+            conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN health_code VARCHAR(50)"))
         if "llm_model" not in scan_source_result_columns:
             conn.execute(text("ALTER TABLE scan_source_results ADD COLUMN llm_model VARCHAR(80)"))
         if "llm_input_tokens" not in scan_source_result_columns:
