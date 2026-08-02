@@ -68,8 +68,9 @@
           <label class="form-check mt-sm">
             <input type="checkbox" name="is_default" value="true"
                    {% if form_values and form_values.is_default or (not form_values and profile and profile.is_default) %}checked{% endif %}>
-            <span class="text-sm">Default for all artists</span>
+            <span class="text-sm">Use as the global Home Area</span>
           </label>
+          <div class="form-hint">The Home Area is automatically tracked for every artist. Selecting this replaces the current Home Area.</div>
         </div>
       </div>
 

@@ -14,6 +14,12 @@
     </a>
   </div>
 
+  {% if error == 'home_area' %}
+  <div class="alert alert-warning mb-md">
+    The global Home Area cannot be deleted. Make another location the Home Area first.
+  </div>
+  {% endif %}
+
   {% if profiles %}
   <div class="card-grid">
     {% for profile in profiles %}
@@ -22,7 +28,7 @@
         <h3 class="card-title flex items-center gap-sm">
           📍 {{ profile.name }}
           {% if profile.is_default %}
-            <span class="badge badge-success" style="font-size: 0.625rem;">DEFAULT</span>
+            <span class="badge badge-success" style="font-size: 0.625rem;">HOME AREA</span>
           {% endif %}
         </h3>
       </div>
@@ -45,11 +51,13 @@
 
       <div class="flex gap-xs mt-sm">
         <a href="/locations/{{ profile.id }}/edit" class="btn btn-ghost btn-sm">Edit</a>
+        {% if not profile.is_default %}
         <form method="post" action="/locations/{{ profile.id }}/delete"
               onsubmit="return confirm('Delete {{ profile.name }}?')"
               style="margin-left: auto;">
           <button type="submit" class="btn btn-ghost btn-sm" style="color: var(--status-error);">Delete</button>
         </form>
+        {% endif %}
       </div>
     </div>
     {% endfor %}

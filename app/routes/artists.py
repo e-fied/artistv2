@@ -10,9 +10,13 @@ from sqlalchemy.orm import Session
 
 from app.config import load_settings
 from app.database import get_db
-from app.models.artist import Artist, ArtistLocation, ArtistSource
+from app.models.artist import Artist, ArtistSource
 from app.models.location import LocationProfile
 from app.services.artist_status import pause_artist_until_past_events
+from app.services.location_policy import (
+    get_artist_location_policy,
+    replace_artist_travel_cities,
+)
 
 router = APIRouter(prefix="/artists")
 
@@ -21,10 +25,12 @@ router = APIRouter(prefix="/artists")
 def add_artist_page(request: Request, db: Session = Depends(get_db)):
     """Render the add artist form."""
     locations = db.query(LocationProfile).order_by(LocationProfile.name).all()
+    home_locations = [location for location in locations if location.is_default]
     return request.app.state.templates.TemplateResponse(request=request, name="artists/form.html", context={
             "request": request,
             "artist": None,
             "locations": locations,
+            "home_locations": home_locations,
             "editing": False,
             "tm_review_requested": False,
         },
@@ -39,7 +45,6 @@ def create_artist(
     artist_type: str = Form("music"),
     notes: str = Form(""),
     website_url: str = Form(""),
-    location_ids: List[int] = Form(default=[]),
     travel_location_ids: List[int] = Form(default=[]),
 ):
     """Create a new artist."""
@@ -69,22 +74,7 @@ def create_artist(
         )
         db.add(web_source)
 
-    # Assign home locations
-    for loc_id in location_ids:
-        db.add(ArtistLocation(
-            artist_id=artist.id,
-            location_profile_id=loc_id,
-            is_travel_city=False,
-        ))
-
-    # Assign travel locations
-    for loc_id in travel_location_ids:
-        if loc_id not in location_ids:
-            db.add(ArtistLocation(
-                artist_id=artist.id,
-                location_profile_id=loc_id,
-                is_travel_city=True,
-            ))
+    replace_artist_travel_cities(db, artist.id, travel_location_ids)
 
     db.commit()
     return RedirectResponse(url=f"/artists/{artist.id}/edit?tm_review=1", status_code=303)
@@ -100,16 +90,15 @@ def edit_artist_page(
         return RedirectResponse(url="/", status_code=303)
 
     locations = db.query(LocationProfile).order_by(LocationProfile.name).all()
-    artist_location_ids = [al.location_profile_id for al in artist.locations if not al.is_travel_city]
-    artist_travel_ids = [al.location_profile_id for al in artist.locations if al.is_travel_city]
+    location_policy = get_artist_location_policy(db, artist.id)
 
     return request.app.state.templates.TemplateResponse(request=request, name="artists/form.html", context={
             "request": request,
             "artist": artist,
             "locations": locations,
+            "home_locations": location_policy.home_profiles,
             "editing": True,
-            "artist_location_ids": artist_location_ids,
-            "artist_travel_ids": artist_travel_ids,
+            "artist_travel_ids": location_policy.travel_profile_ids,
             "tm_review_requested": request.query_params.get("tm_review") == "1",
         },
     )
@@ -126,7 +115,6 @@ def update_artist(
     is_paused: bool = Form(False),
     notify_enabled: bool = Form(True),
     website_url: str = Form(""),
-    location_ids: List[int] = Form(default=[]),
     travel_location_ids: List[int] = Form(default=[]),
 ):
     """Update an existing artist."""
@@ -142,21 +130,7 @@ def update_artist(
         artist.paused_until_date = None
     artist.notify_enabled = notify_enabled
 
-    # Update locations — clear and re-add
-    db.query(ArtistLocation).filter(ArtistLocation.artist_id == artist_id).delete()
-    for loc_id in location_ids:
-        db.add(ArtistLocation(
-            artist_id=artist.id,
-            location_profile_id=loc_id,
-            is_travel_city=False,
-        ))
-    for loc_id in travel_location_ids:
-        if loc_id not in location_ids:
-            db.add(ArtistLocation(
-                artist_id=artist.id,
-                location_profile_id=loc_id,
-                is_travel_city=True,
-            ))
+    replace_artist_travel_cities(db, artist.id, travel_location_ids)
 
     db.commit()
     return RedirectResponse(url="/", status_code=303)

@@ -999,3 +999,26 @@ tbody tr:hover {
 .font-semibold { font-weight: 600; }
 .w-full { width: 100%; }
 .hidden { display: none; }
+.location-policy-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+}
+
+.alert {
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+}
+
+.alert-warning {
+  border-color: var(--status-warning);
+  background: var(--status-warning-bg);
+}

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.location import LocationAlias, LocationProfile
+from app.services.location_policy import set_global_home_area
 
 router = APIRouter(prefix="/locations")
 
@@ -93,6 +94,7 @@ def locations_page(request: Request, db: Session = Depends(get_db)):
     return request.app.state.templates.TemplateResponse(request=request, name="locations/index.html", context={
             "request": request,
             "profiles": profiles,
+            "error": request.query_params.get("error"),
         },
     )
 
@@ -164,6 +166,9 @@ def create_location(
     )
     db.add(profile)
     db.flush()
+
+    if is_default:
+        set_global_home_area(db, profile)
 
     # Add aliases (comma-separated)
     for alias in aliases.split(","):
@@ -251,7 +256,13 @@ def update_location(
     profile.radius_km = radius_km
     profile.country_code = country_code.strip().upper()
     profile.region_code = region_code.strip().upper() or None
-    profile.is_default = is_default
+    if is_default:
+        set_global_home_area(db, profile)
+    elif profile.is_default:
+        # A home area remains global until another profile replaces it.
+        profile.is_default = True
+    else:
+        profile.is_default = False
 
     # Replace aliases
     db.query(LocationAlias).filter(
@@ -274,6 +285,8 @@ def delete_location(profile_id: int, db: Session = Depends(get_db)):
     """Delete a location profile."""
     profile = db.query(LocationProfile).filter(LocationProfile.id == profile_id).first()
     if profile:
+        if profile.is_default:
+            return RedirectResponse(url="/locations/?error=home_area", status_code=303)
         db.delete(profile)
         db.commit()
     return RedirectResponse(url="/locations/", status_code=303)

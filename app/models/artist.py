@@ -104,7 +104,7 @@ class ArtistSource(Base):
 
 
 class ArtistLocation(Base):
-    """Links an artist to a location profile (home city or travel city)."""
+    """Links an artist to an additional travel-city profile."""
 
     __tablename__ = "artist_locations"
 
@@ -119,7 +119,7 @@ class ArtistLocation(Base):
     )
     is_travel_city: Mapped[bool] = mapped_column(
         Boolean, default=False
-    )  # false = home, true = would travel for
+    )  # retained for forward-compatible normalization of legacy rows
 
     # Relationships
     artist: Mapped["Artist"] = relationship(back_populates="locations")

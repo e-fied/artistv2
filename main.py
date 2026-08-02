@@ -20,6 +20,7 @@ from app.database import Base, SessionLocal, engine, ensure_sqlite_schema
 from app.models.event import Event
 from app.models.scan import ScanRun
 from app.seed import seed_locations
+from app.services.location_policy import normalize_location_policy
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -59,6 +60,7 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         seed_locations(db)
+        normalize_location_policy(db)
     finally:
         db.close()
 

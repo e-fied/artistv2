@@ -29,7 +29,7 @@ class LocationProfile(Base):
     )  # BC, WA, etc.
     is_default: Mapped[bool] = mapped_column(
         Boolean, default=False
-    )  # applies to all artists unless overridden
+    )  # the single global home area, applied to every artist
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

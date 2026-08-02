@@ -193,30 +193,7 @@ def get_profiles_for_artist(
     db: Session,
     artist_id: int,
 ) -> List[LocationProfile]:
-    """Get all location profiles that apply to an artist.
-    
-    Includes:
-    - Profiles directly linked to the artist (via ArtistLocation)
-    - Default profiles (is_default=True) if the artist has no explicit assignments
-    """
-    from app.models.artist import ArtistLocation
+    """Get the global home area plus this artist's explicit travel cities."""
+    from app.services.location_policy import get_artist_location_policy
 
-    # Get explicitly linked profiles
-    linked = (
-        db.query(LocationProfile)
-        .join(ArtistLocation, ArtistLocation.location_profile_id == LocationProfile.id)
-        .filter(ArtistLocation.artist_id == artist_id)
-        .all()
-    )
-
-    if linked:
-        return linked
-
-    # Fall back to default profiles
-    defaults = (
-        db.query(LocationProfile)
-        .filter(LocationProfile.is_default == True)
-        .all()
-    )
-
-    return defaults
+    return get_artist_location_policy(db, artist_id).profiles
